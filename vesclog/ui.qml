@@ -513,6 +513,58 @@ Item {
     }
 
     // ── Viewport ─────────────────────────────────────────────────────────────
+    // A fast drag would otherwise repaint every chart per pixel of movement
+    Timer {
+        id: repaintTimer
+        interval: 30
+        onTriggered: root.repaintCharts()
+    }
+    function scheduleRepaint() { repaintTimer.restart() }
+
+    // Reduce a series to one min/max pair per horizontal pixel. Drawing 3000
+    // points into a 400 px wide chart is mostly invisible work, and the
+    // envelope keeps the spikes that matter on current and duty traces.
+    // Returns { n, px, lo, hi, min, max } with n filled columns.
+    function decimate(arr, t, iA, iB, cw, hold) {
+        var px = new Array(cw), lo = new Array(cw), hi = new Array(cw)
+        var n = 0, curCol = -1
+        var gmin = Infinity, gmax = -Infinity
+        var span = viewT1 - viewT0
+        var lastV = NaN
+
+        for (var i = iA; i <= iB; i++) {
+            var v = arr[i]
+            if (isFinite(v)) {
+                lastV = v
+            } else if (hold && isFinite(lastV)) {
+                v = lastV
+            }
+            if (!isFinite(v)) {
+                continue
+            }
+
+            var col = Math.floor(((t[i] - viewT0) / span) * cw)
+            if (col < 0) col = 0
+            if (col >= cw) col = cw - 1
+
+            if (col !== curCol) {
+                curCol = col
+                px[n] = col
+                lo[n] = v
+                hi[n] = v
+                n++
+            } else {
+                var k = n - 1
+                if (v < lo[k]) lo[k] = v
+                if (v > hi[k]) hi[k] = v
+            }
+            if (v < gmin) gmin = v
+            if (v > gmax) gmax = v
+        }
+
+        return { n: n, px: px, lo: lo, hi: hi, min: gmin, max: gmax }
+    }
+
     function clampView(t0, t1) {
         var t = logData[timeKey]
         var tMin = t[0], tMax = t[t.length - 1]
@@ -522,7 +574,7 @@ Item {
         if (b > tMax) { b = tMax; a = tMax - span }
         viewT0 = a
         viewT1 = b
-        repaintCharts()
+        scheduleRepaint()
     }
 
     function zoomAt(factor, frac) {
@@ -806,13 +858,15 @@ Item {
             Layout.fillWidth: true
             color: Utility.getAppHexColor("disabledText")
             font.pointSize: 8
-            text: "Drag to move the cursor and pan · pinch to zoom"
+            text: "Range bar: drag to pan, pinch to zoom · tap a chart to place the cursor"
         }
 
-        // Pinch zooms the shared x-range; a one-finger drag pans and scrubs.
+        // Navigation lives here rather than on the charts. Overloading a drag
+        // to both pan and scrub meant stealing the gesture from the Flickable,
+        // which broke vertical scrolling anywhere a chart was under the thumb.
         PinchArea {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            implicitHeight: 54
 
             property real pinchStartSpan: 0
             property real pinchFrac: 0.5
@@ -829,224 +883,332 @@ Item {
                 }
             }
 
-            Flickable {
-                id: chartScroll
+            Canvas {
+                id: rangeBar
                 anchors.fill: parent
-                contentWidth: width
-                contentHeight: chartCol.height
-                clip: true
-                // Horizontal drags belong to the charts, vertical to the list
-                flickableDirection: Flickable.VerticalFlick
+                renderStrategy: Canvas.Cooperative
 
-                Column {
-                    id: chartCol
-                    width: chartScroll.width
-                    spacing: 6
+                Connections {
+                    target: root
+                    function onRepaintCharts() { rangeBar.requestPaint() }
+                }
 
-                    Repeater {
-                        model: activePanels
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    ctx.fillStyle = bgColor
+                    ctx.fillRect(0, 0, width, height)
 
-                        Item {
-                            width: chartCol.width
-                            height: 150
+                    if (!timeKey || !logData[timeKey]) {
+                        return
+                    }
+                    var t = logData[timeKey]
+                    var tMin = t[0], tMax = t[t.length - 1]
+                    if (tMax <= tMin) {
+                        return
+                    }
 
-                            property var panelKeys: modelData.keys
+                    // Sparkline of the whole log, so the window has context
+                    var key = ["kmh_vesc", "gnss_h_vel", "Current", "Input Voltage"]
+                        .filter(function (k) {
+                            return logData.hasOwnProperty(k) && hasSignal(logData[k])
+                        })[0]
 
-                            Column {
-                                anchors.fill: parent
-                                spacing: 2
+                    if (key) {
+                        var arr = logData[key]
+                        var mn = Infinity, mx = -Infinity
+                        for (var i = 0; i < arr.length; i++) {
+                            var v = arr[i]
+                            if (isFinite(v)) {
+                                if (v < mn) mn = v
+                                if (v > mx) mx = v
+                            }
+                        }
+                        if (mn < mx) {
+                            ctx.beginPath()
+                            ctx.strokeStyle = Utility.getAppHexColor("disabledText")
+                            ctx.lineWidth = 1
+                            var down = false
+                            for (i = 0; i < arr.length; i++) {
+                                if (!isFinite(arr[i])) {
+                                    continue
+                                }
+                                var x = (t[i] - tMin) / (tMax - tMin) * width
+                                var y = height - 3 - (arr[i] - mn) / (mx - mn) * (height - 6)
+                                if (down) ctx.lineTo(x, y); else ctx.moveTo(x, y)
+                                down = true
+                            }
+                            ctx.stroke()
+                        }
+                    }
 
-                                // Title plus a live value per series
-                                Flow {
-                                    width: parent.width
-                                    spacing: 8
+                    // Dim everything outside the visible window
+                    var x0 = (viewT0 - tMin) / (tMax - tMin) * width
+                    var x1 = (viewT1 - tMin) / (tMax - tMin) * width
+                    ctx.fillStyle = Qt.rgba(0, 0, 0, 0.45)
+                    ctx.fillRect(0, 0, x0, height)
+                    ctx.fillRect(x1, 0, width - x1, height)
 
-                                    Text {
-                                        color: Utility.getAppHexColor("disabledText")
-                                        font.pointSize: 8
-                                        font.bold: true
-                                        text: modelData.title.toUpperCase()
-                                    }
+                    ctx.strokeStyle = Utility.getAppHexColor("lightAccent")
+                    ctx.lineWidth = 2
+                    ctx.strokeRect(x0 + 1, 1, Math.max(2, x1 - x0 - 2), height - 2)
+                }
 
-                                    Repeater {
-                                        model: panelKeys
+                MouseArea {
+                    anchors.fill: parent
+                    preventStealing: true      // navigation only, no scrolling here
 
-                                        Row {
-                                            spacing: 3
+                    property real lastX: 0
+                    property bool inside: false
 
-                                            Rectangle {
-                                                width: 8; height: 8; radius: 4
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                color: colors[index % colors.length]
-                                            }
-                                            Text {
-                                                color: Utility.getAppHexColor("disabledText")
-                                                font.pointSize: 8
-                                                text: logMeta[modelData] ? logMeta[modelData].name : modelData
-                                            }
-                                            Text {
-                                                color: Utility.getAppHexColor("lightText")
-                                                font.pointSize: 8
-                                                font.bold: true
-                                                text: {
-                                                    if (cursorIdx < 0 || !logData[modelData]) {
-                                                        return ""
-                                                    }
-                                                    var v = valueAt(modelData, cursorIdx)
-                                                    if (!isFinite(v)) {
-                                                        return "-"
-                                                    }
-                                                    var m = logMeta[modelData]
-                                                    return v.toFixed(Math.min(m.precision, 2)) +
-                                                           (m.unit ? " " + m.unit : "")
+                    function tAt(x) {
+                        var t = logData[timeKey]
+                        var tMin = t[0], tMax = t[t.length - 1]
+                        return tMin + Math.max(0, Math.min(1, x / width)) * (tMax - tMin)
+                    }
+
+                    onPressed: {
+                        if (!timeKey || !logData[timeKey]) {
+                            return
+                        }
+                        lastX = mouseX
+                        var t = logData[timeKey]
+                        var tMin = t[0], tMax = t[t.length - 1]
+                        var x0 = (viewT0 - tMin) / (tMax - tMin) * width
+                        var x1 = (viewT1 - tMin) / (tMax - tMin) * width
+                        inside = mouseX >= x0 && mouseX <= x1
+
+                        // Tapping outside jumps the window to that point
+                        if (!inside) {
+                            var span = viewT1 - viewT0
+                            var c = tAt(mouseX)
+                            clampView(c - span / 2, c + span / 2)
+                            inside = true
+                        }
+                    }
+
+                    onPositionChanged: {
+                        if (!inside || !timeKey) {
+                            return
+                        }
+                        var t = logData[timeKey]
+                        var tMin = t[0], tMax = t[t.length - 1]
+                        var dt = (mouseX - lastX) / width * (tMax - tMin)
+                        lastX = mouseX
+                        clampView(viewT0 + dt, viewT1 + dt)
+                    }
+                }
+            }
+        }
+
+        Flickable {
+            id: chartScroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: chartCol.height
+            clip: true
+            flickableDirection: Flickable.VerticalFlick
+
+            Column {
+                id: chartCol
+                width: chartScroll.width
+                spacing: 6
+
+                Repeater {
+                    model: activePanels
+
+                    Item {
+                        id: panelItem
+                        width: chartCol.width
+                        height: 150
+
+                        property var panelKeys: modelData.keys
+
+                        // Twelve charts exist but only a few are on screen;
+                        // repainting the rest is pure waste.
+                        property bool inView:
+                            (y + height) >= (chartScroll.contentY - 120) &&
+                            y <= (chartScroll.contentY + chartScroll.height + 120)
+
+                        onInViewChanged: if (inView) cv.requestPaint()
+
+                        Column {
+                            anchors.fill: parent
+                            spacing: 2
+
+                            Flow {
+                                width: parent.width
+                                spacing: 8
+
+                                Text {
+                                    color: Utility.getAppHexColor("disabledText")
+                                    font.pointSize: 8
+                                    font.bold: true
+                                    text: modelData.title.toUpperCase()
+                                }
+
+                                Repeater {
+                                    model: panelKeys
+
+                                    Row {
+                                        spacing: 3
+
+                                        Rectangle {
+                                            width: 8; height: 8; radius: 4
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: colors[index % colors.length]
+                                        }
+                                        Text {
+                                            color: Utility.getAppHexColor("disabledText")
+                                            font.pointSize: 8
+                                            text: logMeta[modelData] ? logMeta[modelData].name : modelData
+                                        }
+                                        Text {
+                                            color: Utility.getAppHexColor("lightText")
+                                            font.pointSize: 8
+                                            font.bold: true
+                                            text: {
+                                                if (cursorIdx < 0 || !logData[modelData]) {
+                                                    return ""
                                                 }
+                                                var v = valueAt(modelData, cursorIdx)
+                                                if (!isFinite(v)) {
+                                                    return "-"
+                                                }
+                                                var m = logMeta[modelData]
+                                                return v.toFixed(Math.min(m.precision, 2)) +
+                                                       (m.unit ? " " + m.unit : "")
                                             }
                                         }
                                     }
                                 }
+                            }
 
-                                Canvas {
-                                    id: cv
-                                    width: parent.width
-                                    height: parent.height - 22
-                                    antialiasing: true
+                            Canvas {
+                                id: cv
+                                width: parent.width
+                                height: parent.height - 22
+                                antialiasing: false
+                                // Default is software rasterisation into a QImage
+                                renderTarget: Canvas.FramebufferObject
+                                renderStrategy: Canvas.Cooperative
 
-                                    readonly property int axisW: 54
+                                readonly property int axisW: 54
 
-                                    Connections {
-                                        target: root
-                                        function onRepaintCharts() { cv.requestPaint() }
+                                Connections {
+                                    target: root
+                                    function onRepaintCharts() {
+                                        if (panelItem.inView) cv.requestPaint()
+                                    }
+                                }
+
+                                onPaint: {
+                                    var ctx = getContext("2d")
+                                    ctx.reset()
+
+                                    ctx.fillStyle = bgColor
+                                    ctx.fillRect(0, 0, width, height)
+
+                                    if (!timeKey || !logData[timeKey]) {
+                                        return
                                     }
 
-                                    onPaint: {
-                                        var ctx = getContext("2d")
-                                        ctx.reset()
+                                    var t = logData[timeKey]
+                                    var cw = Math.max(1, Math.floor(width - axisW))
+                                    var iA = loBound(t, viewT0)
+                                    var iB = Math.min(loBound(t, viewT1), t.length - 1)
 
-                                        ctx.fillStyle = bgColor
-                                        ctx.fillRect(0, 0, width, height)
+                                    ctx.strokeStyle = gridColor
+                                    ctx.lineWidth = 1
+                                    for (var g = 1; g < 4; g++) {
+                                        var gy = (g / 4) * height
+                                        ctx.beginPath()
+                                        ctx.moveTo(axisW, gy)
+                                        ctx.lineTo(width, gy)
+                                        ctx.stroke()
+                                    }
 
-                                        if (!timeKey || !logData[timeKey]) {
-                                            return
+                                    for (var si = 0; si < panelKeys.length; si++) {
+                                        var key = panelKeys[si]
+                                        var arr = logData[key]
+                                        if (!arr) {
+                                            continue
                                         }
 
-                                        var t = logData[timeKey]
-                                        var cw = width - axisW
-                                        var iA = loBound(t, viewT0)
-                                        var iB = Math.min(loBound(t, viewT1), t.length - 1)
+                                        // GNSS updates slower than the log rate,
+                                        // so hold its last reading across gaps
+                                        var hold = key.indexOf("gnss_") === 0
+                                        var d = decimate(arr, t, iA, iB, cw, hold)
+                                        if (d.n === 0 || !isFinite(d.min)) {
+                                            continue
+                                        }
 
-                                        // Gridlines
-                                        ctx.strokeStyle = gridColor
-                                        ctx.lineWidth = 1
-                                        for (var g = 1; g < 4; g++) {
-                                            var gy = (g / 4) * height
+                                        var mn = d.min, mx = d.max
+                                        if (mn === mx) { mn -= 1; mx += 1 }
+                                        var pad = (mx - mn) * 0.07
+                                        mn -= pad; mx += pad
+                                        var sc = (height - 2) / (mx - mn)
+
+                                        ctx.beginPath()
+                                        ctx.strokeStyle = colors[si % colors.length]
+                                        ctx.lineWidth = 1.5
+
+                                        for (var c = 0; c < d.n; c++) {
+                                            var x = axisW + d.px[c]
+                                            var yHi = height - (d.hi[c] - mn) * sc - 1
+                                            var yLo = height - (d.lo[c] - mn) * sc - 1
+                                            if (c === 0) {
+                                                ctx.moveTo(x, yHi)
+                                            } else {
+                                                ctx.lineTo(x, yHi)
+                                            }
+                                            if (yLo !== yHi) {
+                                                ctx.lineTo(x, yLo)
+                                            }
+                                        }
+                                        ctx.stroke()
+
+                                        // Range labels for the first two series
+                                        // only, otherwise they collide
+                                        if (si < 2) {
+                                            var prec = Math.min(logMeta[key].precision, 2)
+                                            // Large values (RPM, trip metres) do not
+                                            // fit the gutter with decimals
+                                            if (Math.abs(mx) >= 1000 || Math.abs(mn) >= 1000) {
+                                                prec = 0
+                                            }
+                                            ctx.fillStyle = colors[si % colors.length]
+                                            ctx.font = "9px sans-serif"
+                                            ctx.textAlign = si === 0 ? "right" : "left"
+                                            var lx = si === 0 ? axisW - 3 : axisW + 3
+                                            ctx.textBaseline = "top"
+                                            ctx.fillText(mx.toFixed(prec), lx, 2)
+                                            ctx.textBaseline = "bottom"
+                                            ctx.fillText(mn.toFixed(prec), lx, height - 2)
+                                        }
+                                    }
+
+                                    if (cursorIdx >= 0) {
+                                        var span = viewT1 - viewT0
+                                        var cx = axisW + ((t[cursorIdx] - viewT0) / span) * cw
+                                        if (cx >= axisW && cx <= width) {
+                                            ctx.strokeStyle = Utility.getAppHexColor("lightText")
+                                            ctx.lineWidth = 1
                                             ctx.beginPath()
-                                            ctx.moveTo(axisW, gy)
-                                            ctx.lineTo(width, gy)
+                                            ctx.moveTo(cx, 0)
+                                            ctx.lineTo(cx, height)
                                             ctx.stroke()
                                         }
-
-                                        for (var si = 0; si < panelKeys.length; si++) {
-                                            var key = panelKeys[si]
-                                            var arr = logData[key]
-                                            if (!arr) {
-                                                continue
-                                            }
-
-                                            // Autoscale to the visible window
-                                            var mn = Infinity, mx = -Infinity
-                                            for (var i = iA; i <= iB; i++) {
-                                                var v = arr[i]
-                                                if (isFinite(v)) {
-                                                    if (v < mn) mn = v
-                                                    if (v > mx) mx = v
-                                                }
-                                            }
-                                            if (!isFinite(mn)) {
-                                                continue
-                                            }
-                                            if (mn === mx) { mn -= 1; mx += 1 }
-                                            var pad = (mx - mn) * 0.07
-                                            mn -= pad; mx += pad
-
-                                            // GNSS updates slower than the log rate; hold the
-                                            // last reading so the trace stays continuous.
-                                            var hold = key.indexOf("gnss_") === 0
-                                            var lastV = NaN
-                                            var down = false
-
-                                            ctx.beginPath()
-                                            ctx.strokeStyle = colors[si % colors.length]
-                                            ctx.lineWidth = 1.5
-
-                                            for (i = iA; i <= iB; i++) {
-                                                var val = arr[i]
-                                                if (isFinite(val)) {
-                                                    lastV = val
-                                                } else if (hold && isFinite(lastV)) {
-                                                    val = lastV
-                                                }
-                                                if (!isFinite(val)) {
-                                                    down = false
-                                                    continue
-                                                }
-                                                var px = axisW + ((t[i] - viewT0) / (viewT1 - viewT0)) * cw
-                                                var py = height - ((val - mn) / (mx - mn)) * (height - 2) - 1
-                                                if (down) {
-                                                    ctx.lineTo(px, py)
-                                                } else {
-                                                    ctx.moveTo(px, py)
-                                                }
-                                                down = true
-                                            }
-                                            ctx.stroke()
-
-                                            // Range labels for the first two series only,
-                                            // otherwise they collide
-                                            if (si < 2) {
-                                                var prec = Math.min(logMeta[key].precision, 2)
-                                                ctx.fillStyle = colors[si % colors.length]
-                                                ctx.font = "9px sans-serif"
-                                                ctx.textAlign = si === 0 ? "right" : "left"
-                                                var lx = si === 0 ? axisW - 3 : axisW + 3
-                                                ctx.textBaseline = "top"
-                                                ctx.fillText(mx.toFixed(prec), lx, 2)
-                                                ctx.textBaseline = "bottom"
-                                                ctx.fillText(mn.toFixed(prec), lx, height - 2)
-                                            }
-                                        }
-
-                                        // Cursor
-                                        if (cursorIdx >= 0) {
-                                            var cx = axisW + ((t[cursorIdx] - viewT0) / (viewT1 - viewT0)) * cw
-                                            if (cx >= axisW && cx <= width) {
-                                                ctx.strokeStyle = Utility.getAppHexColor("lightText")
-                                                ctx.lineWidth = 1
-                                                ctx.beginPath()
-                                                ctx.moveTo(cx, 0)
-                                                ctx.lineTo(cx, height)
-                                                ctx.stroke()
-                                            }
-                                        }
                                     }
+                                }
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        preventStealing: true
-
-                                        property real lastX: 0
-
-                                        onPressed: {
-                                            lastX = mouseX
-                                            setCursorFrac((mouseX - cv.axisW) / (width - cv.axisW))
-                                        }
-                                        onPositionChanged: {
-                                            var dx = mouseX - lastX
-                                            lastX = mouseX
-                                            var dt = -(dx / (width - cv.axisW)) * (viewT1 - viewT0)
-                                            clampView(viewT0 + dt, viewT1 + dt)
-                                            setCursorFrac((mouseX - cv.axisW) / (width - cv.axisW))
-                                        }
-                                    }
+                                // Tap only: no drag handling, so the Flickable
+                                // keeps vertical scrolling everywhere.
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: setCursorFrac((mouseX - cv.axisW) /
+                                                             (width - cv.axisW))
                                 }
                             }
                         }
