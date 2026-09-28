@@ -1,0 +1,224 @@
+; Always-on part of the screen: status strip, speed, battery bar, nav strip.
+;
+; Drawn the same way as the other dashes in this family: a state list is
+; sampled once per pass and only the entries that changed get redrawn. On a
+; parallel-RGB panel the blit itself is cheap, but building the image buffers
+; is not, so the dirty tracking still earns its keep.
+;
+; This layout has no bitmap assets. The other dashes ship pre-rendered icons
+; sized for a 240-wide panel, which would be lost on a 480x480 screen, so the
+; indicators here are drawn with primitives and text instead. That also means
+; the whole thing can be re-proportioned by editing the constants below.
+
+@const-start
+
+; Layout. The whole screen is described here, including the page area that
+; view_pages draws into, so the bands cannot drift apart. Everything below is
+; derived by stacking, so changing one height moves what follows it.
+(def disp-w 480)
+(def disp-h 480)
+
+(def strip-h 54)		; status strip along the top
+(def speed-y (+ strip-h 2))
+(def speed-h 130)
+(def unit-y (+ speed-y speed-h 2))
+(def unit-h 24)
+(def mode-y (+ unit-y unit-h 2))
+(def mode-h 30)
+(def batt-y (+ mode-y mode-h 6))
+(def batt-h 44)
+
+; Page area, drawn by view_pages
+(def page-x 0)
+(def page-w disp-w)
+(def page-y (+ batt-y batt-h 8))
+(def page-h 144)
+(def page-row-h 36)
+
+; Touch nav strip. Also the region split used by lib/input.lisp.
+(def nav-y (+ page-y page-h 4))
+
+(defun view-static-state () (list
+        indicate-l-on                       ; 0
+        indicate-r-on                       ; 1
+        highbeam-on                         ; 2
+        kickstand-down                      ; 3
+        drive-mode                          ; 4
+        cruise-control-active               ; 5
+        (round (* 100.0 stats-battery-soc)) ; 6
+        battery-a-charging                  ; 7
+        stats-fault-code                    ; 8
+        light-on                            ; 9
+        page-now                            ; 10
+        (round (u-speed stats-kmh))         ; 11
+        service-mode                        ; 12
+        (round cruise-control-speed)        ; 13
+))
+
+; Never changes with the vehicle state, so it is not in the state list. Also
+; used to repaint over anything that drew on top, such as the splash or a
+; notification banner.
+(defun view-static-frame () {
+        (disp-clear color-bg)
+
+        ; Separators
+        (var line (img-buffer dm-pool 'indexed2 disp-w 2))
+        (img-clear line 1)
+        (disp-render line 0 (- strip-h 2) colors-theme-2)
+        (disp-render line 0 (- nav-y 2) colors-theme-2)
+
+        (setq view-force-pages true)
+})
+
+; A pill of text, centred in a box. Used for every status indicator so they
+; all line up and all erase their own footprint.
+(defun pill (txt x y w h on colors) {
+        (var imgbuf (img-buffer dm-pool 'indexed4 w h))
+        (img-clear imgbuf)
+        (if on {
+                (img-rectangle imgbuf 0 0 w h 1 '(rounded 6))
+                (ttf-txt-center txt font-16 imgbuf)
+        })
+        (disp-render imgbuf x y colors)
+})
+
+(defun view-static-thread () {
+        (var update-state (map (fn (x) t) (view-static-state)))
+        (var state-last (view-static-state))
+
+        (view-static-frame)
+
+        (loopwhile t {
+                ; --- Status strip -------------------------------------------
+                (var pill-y 8)
+                (var pill-h 40)
+
+                ; Turn signals sit at the outer edges
+                (if (ix update-state 0)
+                    (pill "<" 8 pill-y 52 pill-h
+                        (ix state-last 0) colors-green-icon))
+
+                (if (ix update-state 1)
+                    (pill ">" 420 pill-y 52 pill-h
+                        (ix state-last 1) colors-green-icon))
+
+                ; Fault outranks the rest, so it gets the middle
+                (if (ix update-state 8)
+                    (pill "FAULT" 196 pill-y 88 pill-h
+                        (!= (ix state-last 8) 0) colors-red-icon))
+
+                (if (or (ix update-state 2) (ix update-state 9))
+                    (pill (if (and light-on light-on-is-highbeam) "HIGH" "LIGHT")
+                        68 pill-y 66 pill-h
+                        (or light-on (ix state-last 2))
+                        (if (ix state-last 2) colors-blue-icon colors-green-icon)))
+
+                (if (ix update-state 3)
+                    (pill "STAND" 140 pill-y 76 pill-h
+                        (ix state-last 3) colors-warn))
+
+                (if (or (ix update-state 5) (ix update-state 13))
+                    (pill (if (ix state-last 5)
+                              (str-from-n (to-i (u-speed cruise-control-speed)) "CC %d")
+                              "CC")
+                        290 pill-y 124 pill-h
+                        (ix state-last 5) colors-green-icon))
+
+                ; --- Speed --------------------------------------------------
+                (if (ix update-state 11) {
+                        (var imgbuf (img-buffer dm-pool 'indexed4 disp-w speed-h))
+                        (img-clear imgbuf)
+                        (ttf-txt-center
+                            (str-from-n (to-i (u-speed stats-kmh)) "%d")
+                            font-speed imgbuf)
+                        (disp-render imgbuf 0 speed-y
+                            (if battery-a-charging colors-charging colors-speed))
+                })
+
+                ; --- Units and drive mode -----------------------------------
+                (if (or (ix update-state 11) (ix update-state 7)) {
+                        (var imgbuf (img-buffer dm-pool 'indexed4 disp-w 26))
+                        (img-clear imgbuf)
+                        (ttf-txt-center (u-speed-str) font-16 imgbuf)
+                        (disp-render imgbuf 0 unit-y colors-text-aa)
+                })
+
+                (if (or (ix update-state 4) (ix update-state 12)) {
+                        (var imgbuf (img-buffer dm-pool 'indexed4 disp-w 32))
+                        (img-clear imgbuf)
+                        (ttf-txt-center
+                            (if (ix state-last 12)
+                                "SERVICE"
+                                (ix drive-mode-names (to-i (ix state-last 4))))
+                            font-24 imgbuf)
+                        (disp-render imgbuf 0 mode-y
+                            (if (ix state-last 12) colors-warn colors-text-aa))
+                })
+
+                ; --- Battery ------------------------------------------------
+                (if (or (ix update-state 6) (ix update-state 7)) {
+                        (var soc (clamp01 (/ (to-float (ix state-last 6)) 100.0)))
+                        (var pad 24)
+                        (var w (- disp-w (* 2 pad)))
+
+                        (var imgbuf (img-buffer dm-pool 'indexed4 w batt-h))
+                        (img-clear imgbuf)
+                        (img-rectangle imgbuf 0 0 w batt-h 1 '(rounded 8))
+                        (if (> soc 0.0)
+                            (img-rectangle imgbuf 3 3
+                                (to-i (* (- w 6) soc)) (- batt-h 6)
+                                2 '(filled) '(rounded 6))
+                        )
+                        ; The percentage sits on top of the fill, so it needs
+                        ; a colour of its own rather than the brightest step of
+                        ; the fill ramp, which would be green on green.
+                        (ttf-txt-center
+                            (str-from-n (to-i (ix state-last 6)) "%d %%")
+                            font-24 imgbuf '(0 3 3 3))
+
+                        (var fill (cond
+                                ((ix state-last 7) 0x00C321)
+                                ((< soc 0.15) 0xFF3030)
+                                ((< soc 0.30) 0xFFD400)
+                                (t 0x00C321)
+                        ))
+                        (disp-render imgbuf pad batt-y
+                            (list color-bg (colors-shade fill 0.6) fill color-text))
+                })
+
+                ; --- Touch nav strip ----------------------------------------
+                (if (ix update-state 10) {
+                        (var page (to-i (ix state-last 10)))
+                        (var imgbuf (img-buffer dm-pool 'indexed4 disp-w (- disp-h nav-y)))
+                        (img-clear imgbuf)
+
+                        ; Hints for the three regions the strip is split into
+                        ; by lib/input.lisp, left to right.
+                        (ttf-text imgbuf 24 22 '(0 1 2 3) font-24
+                            (if (>= page page-num) "BACK" "SET"))
+                        (ttf-text imgbuf 436 22 '(0 1 2 3) font-24 ">")
+                        (ttf-txt-center
+                            (if (>= page page-num)
+                                "Settings"
+                                (str-merge (str-from-n (+ page 1) "Page %d/")
+                                           (str-from-n page-num)))
+                            font-16 imgbuf)
+
+                        (disp-render imgbuf 0 nav-y colors-text-aa)
+                })
+
+                (var force view-force-static)
+                (setq view-force-static false)
+                (if force (view-static-frame))
+
+                (var state-new (view-static-state))
+                (looprange i 0 (length update-state)
+                    (setix update-state i (or force (not-eq (ix state-last i) (ix state-new i))))
+                )
+                (setq state-last state-new)
+
+                (sleep 0.05)
+        })
+})
+
+@const-end

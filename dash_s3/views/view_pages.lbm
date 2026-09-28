@@ -1,0 +1,404 @@
+; The swappable lower area of the screen.
+;
+; Same contract as the other dashes in this family: page-catalog holds the
+; selectable pages, settings-page-mask picks which are in rotation, and the
+; settings page is always last. A page function is called with s = true on the
+; pass it becomes visible, which is when it draws its static labels and
+; allocates its image buffers; on later passes it only redraws fields whose
+; value changed.
+
+; Which row the settings list is scrolled to. Lives outside the const block
+; because it is written at runtime.
+(def settings-first-row-last -1)
+
+@const-start
+
+; page-x/y/w/h and page-row-h come from view_static, which owns the layout.
+(def row-h page-row-h)
+
+; Was a bitmap of a solid rectangle in the smaller dashes
+(defun page-clear () {
+        (var strip (img-buffer dm-pool 'indexed2 page-w 4))
+        (looprange i 0 (/ page-h 4)
+            (disp-render strip page-x (+ page-y (* i 4)) (list color-bg color-bg)))
+})
+
+; Round with decimals. E.g. (round-x 1.23 0.1) -> 1.2
+(defun round-x (val x) (* (round (/ val x)) x))
+
+(defun trunc01 (x)
+    (cond
+        ((< x 0.0) 0.0)
+        ((> x 1.0) 1.0)
+        (t x)
+))
+
+; Association list of buffers allocated for the visible page. Rebinding it on
+; a page switch lets GC reclaim the previous page's buffers.
+(def page-resources nil)
+
+(defun txt-right (imgbuf x y str) {
+        (var color (if (rest-args) (rest-args 0) colors-text-aa))
+        (var (w-txt h-txt) (ttf-text-dims font-24 str))
+        (var (w-img h-img) (img-dims imgbuf))
+        (img-clear imgbuf)
+        (ttf-text imgbuf (- w-img w-txt) 22 '(0 1 2 3) font-24 str)
+        (disp-render imgbuf x y color)
+})
+
+(defun txt-left (imgbuf x y str) {
+        (var color (if (rest-args) (rest-args 0) colors-text-aa))
+        (img-clear imgbuf)
+        (ttf-text imgbuf 0 22 '(0 1 2 3) font-24 str)
+        (disp-render imgbuf x y color)
+})
+
+; Two label/value columns, four rows. Every text page here uses this frame, so
+; the column geometry is defined once.
+(def col-lbl-w 150)
+(def col-val-w 76)
+(def col-gap 12)
+(def col-0-lbl page-x)
+(def col-0-val (+ col-0-lbl col-lbl-w col-gap))
+(def col-1-lbl (+ page-x 240))
+(def col-1-val (+ col-1-lbl col-lbl-w col-gap))
+
+(defun grid-lbl-x (i) (if (< i 4) col-0-lbl col-1-lbl))
+(defun grid-val-x (i) (if (< i 4) col-0-val col-1-val))
+(defun grid-y (i) (+ page-y (* (mod i 4) row-h)))
+
+; Draws the eight static labels of a two-column page
+(defun grid-labels (labels) {
+        (var lblimg (img-buffer dm-pool 'indexed4 col-lbl-w row-h))
+        (looprange i 0 (length labels)
+            (txt-right lblimg (grid-lbl-x i) (grid-y i) (ix labels i)))
+})
+
+(defun grid-values (update strs) {
+        (var valimg (assoc page-resources 'val-img))
+        (looprange i 0 (length strs)
+            (if (ix update i)
+                (txt-left valimg (grid-val-x i) (grid-y i) (ix strs i))))
+})
+
+; --- Live page: four configurable slots, 2x2 ------------------------------
+
+(defun get-page-live-state () (list
+        (str-from-n (to-float (slot-value (ix settings-slots 0))) (slot-fmt (ix settings-slots 0)))
+        (str-from-n (to-float (slot-value (ix settings-slots 1))) (slot-fmt (ix settings-slots 1)))
+        (str-from-n (to-float (slot-value (ix settings-slots 2))) (slot-fmt (ix settings-slots 2)))
+        (str-from-n (to-float (slot-value (ix settings-slots 3))) (slot-fmt (ix settings-slots 3)))
+))
+
+(def page-live-state (get-page-live-state))
+
+; Fixed colour, or a green to red ramp across the slot range
+(defun slot-colors (i) {
+        (if (= (ix settings-slot-modes i) 0) (ix colors-slots i) {
+                (var lo (ix settings-slot-mins i))
+                (var hi (ix settings-slot-maxs i))
+                (var v (slot-value (ix settings-slots i)))
+                (var f (if (<= hi lo) 0.0 (/ (- v lo) (- hi lo))))
+                (cond
+                    ((> f 0.85) colors-crit)
+                    ((> f 0.6) colors-warn)
+                    (t colors-ok)
+                )
+        })
+})
+
+(defun page-live (s) {
+        (var curr-state (get-page-live-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-live-state curr-state))
+
+        ; A ramped slot can change colour while its text does not
+        (looprange i 0 4
+            (if (= (ix settings-slot-modes i) 1) (setix update-state i true)))
+
+        (var cell-w (/ page-w 2))
+        (var cell-h (/ page-h 2))
+
+        (if s {
+                (setq update-state (map (fn (x) t) curr-state))
+
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 (- cell-w 16) 42))
+                ))
+
+                (page-clear)
+
+                (var lblimg (img-buffer dm-pool 'indexed4 (- cell-w 16) 24))
+                (looprange i 0 4 {
+                        (var src (ix settings-slots i))
+                        (img-clear lblimg)
+                        (ttf-text lblimg 4 18 '(0 1 2 3) font-16
+                            (str-merge (slot-label src) "  " (slot-unit src)))
+                        (disp-render lblimg
+                            (+ page-x (* (mod i 2) cell-w) 8)
+                            (+ page-y (* (/ i 2) cell-h) 2)
+                            colors-text-aa)
+                })
+        })
+
+        (var valimg (assoc page-resources 'val-img))
+        (looprange i 0 4
+            (if (ix update-state i) {
+                    (img-clear valimg)
+                    (ttf-text valimg 8 36 '(0 1 2 3) font-40 (ix curr-state i))
+                    (disp-render valimg
+                        (+ page-x (* (mod i 2) cell-w) 8)
+                        (+ page-y (* (/ i 2) cell-h) 26)
+                        (slot-colors i))
+            })
+        )
+
+        (setq page-live-state curr-state)
+})
+
+; --- Trip page -------------------------------------------------------------
+
+(defun get-page-trip-state () (list
+        ; Ride-average consumption, not the instantaneous figure: coasting
+        ; drives the latter to zero and the range estimate to infinity.
+        (round-x (if (and (> stats-km 0.1) (> stats-wh 0.5))
+                     (/ (* stats-battery-ah stats-battery-soc stats-vin)
+                        (/ stats-wh stats-km))
+                     0.0) 0.1)               ; 0 Range
+        (round-x stats-km 0.1)               ; 1 Trip
+        (round-x stats-odom 0.1)             ; 2 ODO
+        (round-x (if (> stats-km 0.1) (/ stats-wh stats-km) 0) 0.1) ; 3 Efficiency
+        (round-x stats-wh 0.1)               ; 4 Energy
+        (round-x stats-wh-chg 0.1)           ; 5 Regen
+        (round-x stats-battery-ah 0.1)       ; 6 Amp hours
+        (round-x stats-vin 0.1)              ; 7 Voltage
+))
+
+(def page-trip-state (get-page-trip-state))
+
+(defun page-trip (s) {
+        (var curr-state (get-page-trip-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-trip-state curr-state))
+
+        (if s {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 col-val-w row-h))
+                ))
+                (page-clear)
+                (grid-labels (list "Range" "Trip" "ODO" "Efficiency"
+                                   "Energy" "Regen" "Amp Hours" "Voltage"))
+        })
+
+        (grid-values update-state (list
+            (str-from-n (u-dist (ix curr-state 0)) "%.1f")
+            (str-from-n (u-dist (ix curr-state 1)) "%.1f")
+            (str-from-n (u-dist (ix curr-state 2)) "%.0f")
+            (str-from-n (/ (ix curr-state 3)
+                           (if (eq (car settings-units-speeds) 'mph) km-to-mi 1.0)) "%.0f")
+            (str-from-n (ix curr-state 4) "%.0f")
+            (str-from-n (ix curr-state 5) "%.0f")
+            (str-from-n (ix curr-state 6) "%.1f")
+            (str-from-n (ix curr-state 7) "%.1f")
+        ))
+
+        (setq page-trip-state curr-state)
+})
+
+; --- Session page: maxima and totals since the last reset ------------------
+
+(defun get-page-session-state () (list
+        (round (secs-since 0))               ; 0 Time
+        (round (u-speed stats-kmh-max))      ; 1 Speed max
+        (round (* stats-kw-max 1000.0))      ; 2 Power max
+        (round-x stats-amps-now-max 0.1)     ; 3 Current max
+        (round (u-temp stats-temp-motor-max)); 4 Motor temp max
+        (round (u-temp stats-temp-esc-max))  ; 5 ESC temp max
+        (round (u-temp stats-temp-battery-max)) ; 6 Pack temp max
+        (round-x stats-duty 0.01)            ; 7 Duty
+))
+
+(def page-session-state (get-page-session-state))
+
+(defun page-session (s) {
+        (var curr-state (get-page-session-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-session-state curr-state))
+
+        (if s {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 col-val-w row-h))
+                ))
+                (page-clear)
+                (grid-labels (list "Time" "Speed Max" "Power Max" "I Max"
+                                   "T Mot Max" "T ESC Max" "T Pack Max" "Duty"))
+        })
+
+        (var secs (to-i (ix curr-state 0)))
+        (grid-values update-state (list
+            (str-merge (str-from-n (/ secs 3600) "%d:")
+                       (str-from-n (mod (/ secs 60) 60) "%02d:")
+                       (str-from-n (mod secs 60) "%02d"))
+            (str-from-n (ix curr-state 1) "%.0f")
+            (str-from-n (ix curr-state 2) "%.0f")
+            (str-from-n (ix curr-state 3) "%.0f")
+            (str-from-n (ix curr-state 4) "%.0f")
+            (str-from-n (ix curr-state 5) "%.0f")
+            (str-from-n (ix curr-state 6) "%.0f")
+            (str-from-n (* 100.0 (ix curr-state 7)) "%.0f")
+        ))
+
+        (setq page-session-state curr-state)
+})
+
+; --- Battery page ----------------------------------------------------------
+
+(defun get-page-batt-state () (list
+        (round-x (get-bms-val 'bms-v-tot) 0.1)      ; 0
+        (round-x (get-bms-val 'bms-v-cell-min) 0.01); 1
+        (round-x (get-bms-val 'bms-v-cell-max) 0.01); 2
+        (get-bms-val 'bms-cell-num)                 ; 3
+        (round-x (get-bms-val 'bms-i-in-ic) 0.1)    ; 4
+        (round-x (get-bms-val 'bms-ah-cnt) 0.01)    ; 5
+        (round (get-bms-val 'bms-temp-cell-max))    ; 6
+        (round (get-bms-val 'bms-hum))              ; 7
+))
+
+(def page-batt-state (get-page-batt-state))
+
+(defun page-batt (s) {
+        ; The BMS values all read zero with nothing connected, which is
+        ; indistinguishable from a real reading, so say so outright.
+        (var curr-state (if battery-a-connected
+                            (get-page-batt-state)
+                            (map (fn (x) 0) (range 8))))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-batt-state curr-state))
+
+        (if s {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 col-val-w row-h))
+                ))
+                (page-clear)
+
+                (if (not battery-a-connected) {
+                        (var imgbuf (img-buffer dm-pool 'indexed4 page-w 30))
+                        (img-clear imgbuf)
+                        (ttf-txt-center "No BMS on the bus" font-24 imgbuf)
+                        (disp-render imgbuf page-x (+ page-y 58) colors-dim-icon)
+                }
+                (grid-labels (list "Pack V" "Cell Min" "Cell Max" "Cells"
+                                   "Current" "Ah Count" "T Cell Max" "Humidity")))
+        })
+
+        (if battery-a-connected
+            (grid-values update-state (list
+                (str-from-n (ix curr-state 0) "%.1f")
+                (str-from-n (ix curr-state 1) "%.2f")
+                (str-from-n (ix curr-state 2) "%.2f")
+                (str-from-n (ix curr-state 3) "%d")
+                (str-from-n (ix curr-state 4) "%.1f")
+                (str-from-n (ix curr-state 5) "%.2f")
+                (str-from-n (ix curr-state 6) "%.0f")
+                (str-from-n (ix curr-state 7) "%.0f")
+            ))
+        )
+
+        (setq page-batt-state curr-state)
+})
+
+; --- Settings page ---------------------------------------------------------
+
+(def settings-rows-visible (/ page-h row-h))
+
+; LBM has no min
+(defun imin (a b) (if (< a b) a b))
+
+(defun get-page-settings-state () (append
+        (map (fn (n) (read-setting n)) setting-list-page1)
+        (list setting-now)
+))
+
+(def page-settings-state (get-page-settings-state))
+
+(defun page-settings (s) {
+        (var rows (length setting-list-page1))
+        (var curr-state (get-page-settings-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-settings-state curr-state))
+
+        ; The list is taller than the page, so it scrolls. Which rows are on
+        ; screen depends on the selection, so a selection move has to redraw
+        ; the labels too, not just the values.
+        (var first-row (cond
+                ((<= rows settings-rows-visible) 0)
+                ((< setting-now (/ settings-rows-visible 2)) 0)
+                ((>= setting-now (- rows (/ settings-rows-visible 2)))
+                    (- rows settings-rows-visible))
+                (t (- setting-now (/ settings-rows-visible 2)))
+        ))
+
+        (if (or s (not-eq first-row settings-first-row-last)) {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq settings-first-row-last first-row)
+
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 160 row-h))
+                ))
+
+                (page-clear)
+
+                (var lblimg (img-buffer dm-pool 'indexed4 210 row-h))
+                (looprange i 0 (imin settings-rows-visible rows)
+                    (txt-right lblimg (+ page-x 4) (+ page-y (* i row-h))
+                        (ix setting-label-page1 (+ first-row i))))
+        })
+
+        (var valimg (assoc page-resources 'val-img))
+        (looprange i 0 (imin settings-rows-visible rows) {
+                (var r (+ first-row i))
+                (if (or (ix update-state r) (ix update-state rows))
+                    (txt-left valimg (+ page-x 224) (+ page-y (* i row-h))
+                        (str-from-n (ix curr-state r) (ix setting-fmt-page1 r))
+                        (if (= (ix curr-state rows) r) colors-text-sel-aa colors-text-aa))
+                )
+        })
+
+        (setq page-settings-state curr-state)
+})
+
+; Index order is stored in settings-page-mask, so only append here.
+(def page-catalog (list page-live page-trip page-session page-batt))
+
+(def pages (append page-catalog (list page-settings)))
+
+(defun settings-apply-pages () {
+        (var sel nil)
+        (looprange i 0 (length page-catalog)
+            (if (!= 0 (bitwise-and settings-page-mask (shl 1 i)))
+                (setq sel (cons (ix page-catalog i) sel))
+        ))
+        (setq sel (reverse sel))
+
+        (if (eq sel nil) (setq sel (list (ix page-catalog 0))))
+
+        (setq page-num (length sel))
+        (setq pages (append sel (list page-settings)))
+        (if (> page-now page-num) (setq page-now 0))
+})
+
+(settings-apply-pages)
+
+(defun view-pages-thread () {
+        (var last-page 100)	; forces s = true on the first pass
+
+        (loopwhile t {
+                (var page-now-sample page-now)
+                (var curr-page (ix pages page-now-sample))
+                (var force view-force-pages)
+                (setq view-force-pages false)
+                (if curr-page (curr-page (or force (not (= last-page page-now-sample)))))
+                (setq last-page page-now-sample)
+                (sleep 0.05)
+        })
+})
+
+@const-end
