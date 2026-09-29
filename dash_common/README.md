@@ -51,6 +51,12 @@ since everything beyond the pedal RPM needs ESC firmware 7.01 or newer, and
 sends nothing when they are absent. The page then shows `no data` rather than a
 screen of zeros.
 
+If a PAS value is put in a live-page slot with the colour ramp mode enabled, the
+slot's own minimum and maximum drive the green to red ramp, and the defaults of
+0 to 100 suit none of these. Ranges worth starting from, which are what a Cycle
+Analyst uses for its own bar graphs: rider and assist power 0 to 400 W, cadence
+0 to 120 rpm. Crank torque depends on the sensor, so use its full scale.
+
 The status word reports the worst active condition, in this order: `no data`,
 `no pins`, `bad ch`, `bad brk`, `bad sens`, `no trq hw`, `clipped`, `brake`,
 `sp limit`, `ok`. Those map to the bits `app-pas-get-flags` returns; `clipped`
