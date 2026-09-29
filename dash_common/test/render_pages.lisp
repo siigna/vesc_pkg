@@ -47,6 +47,11 @@
 (def session-state-live get-page-session-state)
 (defun get-page-session-state () (setix (session-state-live) 0 4321))
 
+; Normally supplied by the board's main.lisp, which the harness does not load.
+; settings-apply-visual calls it, since a theme change is also when the
+; backlight level is reasserted.
+(defun bl-set (level) nil)
+
 (def dm-pool (dm-create config-dm-pool))
 (def screen (img-buffer 'rgb888 disp-w disp-h))
 (set-active-img screen)
@@ -71,7 +76,9 @@
 ; happen before the static strip is drawn: the strip shows one dot per page, so
 ; changing the page count afterwards would alter the strip part way through the
 ; run and every page captured after that point would differ.
-(setq settings-page-mask 0x7F)
+; Stored rather than assigned: the theme change further down reloads the
+; settings, and a mask that only existed in a variable would be lost there.
+(settings-set 'page-mask 0x7F)
 (settings-apply-pages)
 
 ; The chart plots whatever has been sampled, so the harness fills the ring
@@ -136,5 +143,21 @@
 
 ; The cell that the hold above is over, which is the one the press would chart.
 (print (list 'BOARD 'hold-cell (live-cell-hit touch-x touch-y)))
+
+; The live page once more under the Light theme, which is the only row with a
+; pale background and so the one that would expose anything still assuming a
+; black one. Every palette is built against color-bg, so this is the check that
+; nothing draws a literal colour behind the code's back.
+; Through settings-set, which is the path VESC Tool uses, so the test covers
+; the reload and the repaint rather than a hand-built palette.
+(setq btn-hold-region nil)
+(settings-set 'theme 4)
+(settings-apply-visual)
+(view-static-frame)
+(sleep 0.3)
+(page-live true)
+(page-live false)
+(sleep 0.3)
+(save-active-img "out/BOARD_theme_light.png")
 
 (print (list 'BOARD 'pages (length pages) 'ok))

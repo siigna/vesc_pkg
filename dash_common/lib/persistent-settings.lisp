@@ -131,6 +131,8 @@
     (splash-en . (78 i))
     (chart-src . (79 i))
     (chart-secs . (80 i))
+    (theme . (81 i))
+    (col-bg . (82 i))
 ))
 
 (defun print-settings ()
@@ -176,6 +178,10 @@
         (motor-hot    "Motor Warn"  "%.0f C"   1.0   0.0  200.0)
         (units-metric "Metric Spd"  "%d"       1     0    1)
         (temps-metric "Metric Tmp"  "%d"       1     0    1)
+        ; Bit 11. A bare index rather than a name because the settings page
+        ; formats numbers, and here that is tolerable: the whole screen
+        ; recolours as the number changes, so the value names itself.
+        (theme        "Theme"       "%d"       1     0    4)
 ))
 
 (def setting-catalog-max 6)
@@ -211,7 +217,9 @@
         ; vehicles have no pedals. Raise the upper bound when pages are added or
         ; the new page cannot be enabled at all.
         (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x7F 0xF))
-        (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x7FF 0xF))
+        ; One bit per setting-catalog row. Raise the bound when the catalog
+        ; grows, or the new row cannot be enabled at all.
+        (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0xFFF 0xF))
 
         ; The upper bound is the highest action id in btn-do-action. Raise it
         ; when an action is added, or the new id clamps to 0 and the binding
@@ -228,8 +236,15 @@
         (setq settings-icon-mask (setting-clamp (read-setting 'icon-mask) 0 0x3F 0x3F))
         (setq settings-batt-ramp (setting-flag 'batt-ramp false))
         (setq settings-splash (setting-flag 'splash-en true))
-        (setq color-accent (setting-clamp (read-setting 'col-accent) 0 0xFFFFFF 0x00C8FF))
-        (setq color-text (setting-clamp (read-setting 'col-text) 0 0xFFFFFF 0xfbfcfc))
+        ; The theme first: it supplies the defaults the three colour settings
+        ; fall back to, so it has to be known before they are read. An
+        ; out-of-range index falls back to row 0 in theme-row rather than here,
+        ; since the catalog length lives with the catalog.
+        (setq settings-theme (setting-clamp (read-setting 'theme) 0 15 0))
+        (theme-apply-status)
+        (setq color-bg (setting-clamp (read-setting 'col-bg) 0 0xFFFFFF (theme-bg)))
+        (setq color-accent (setting-clamp (read-setting 'col-accent) 0 0xFFFFFF (theme-accent)))
+        (setq color-text (setting-clamp (read-setting 'col-text) 0 0xFFFFFF (theme-text)))
         ; Upper bound is the last index of slot-catalog. Raise it when the
         ; catalog grows, or the new sources cannot be selected at all.
         ; Which slot-catalog source the rolling chart plots, and over how long.
@@ -240,7 +255,10 @@
 
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
-        (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF 0xfbfcfc))
+        ; Same fallback as the three main colours: an unpicked cell takes the
+        ; theme's text colour, so a live cell is not left white on a pale
+        ; background.
+        (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF (theme-text)))
                 '(slot-col-0 slot-col-1 slot-col-2 slot-col-3)))
         (setq settings-slot-modes (map (fn (n) (setting-clamp (read-setting n) 0 1 0))
                 '(slot-mode-0 slot-mode-1 slot-mode-2 slot-mode-3)))
@@ -362,8 +380,11 @@
             (str-from-n (if standalone-active 1 0) "%d ")
             (str-from-n standalone-esc-id "%d ")
             (str-from-n settings-icon-mask "%d ")
-            (str-from-n color-accent "%d ")
-            (str-from-n color-text "%d ")
+            ; The stored values rather than the resolved ones, so the pickers
+            ; can show "Theme" for a colour nobody has overridden. An unwritten
+            ; cell reads -1, which is exactly that state.
+            (str-from-n (read-setting 'col-accent) "%d ")
+            (str-from-n (read-setting 'col-text) "%d ")
             (str-from-n (ix settings-slots 0) "%d ")
             (str-from-n (ix settings-slots 1) "%d ")
             (str-from-n (ix settings-slots 2) "%d ")
@@ -385,7 +406,12 @@
             (str-from-n (ix settings-slot-maxs 2) "%.0f ")
             (str-from-n (ix settings-slot-maxs 3) "%.0f ")
             (str-from-n (if settings-batt-ramp 1 0) "%d ")
-            (str-from-n (if settings-splash 1 0) "%d")
+            (str-from-n (if settings-splash 1 0) "%d ")
+            ; Positional and append-only, so new fields go on the end.
+            (str-from-n settings-theme "%d ")
+            (str-from-n (read-setting 'col-bg) "%d ")
+            (str-from-n settings-chart-src "%d ")
+            (str-from-n settings-chart-secs "%d")
 )))
 
 (defun restore-settings ()
@@ -436,8 +462,14 @@
         (write-setting 'batt-ramp 0)
         (write-setting 'splash-en 1)
 
-        (write-setting 'col-accent 0x00C8FF)
-        (write-setting 'col-text 0xfbfcfc)
+        (write-setting 'theme 0)
+
+        ; -1 is "no colour picked", which is what makes the three fall back to
+        ; whatever the theme says. Writing an actual colour here would pin them
+        ; and every later theme change would only move the status colours.
+        (write-setting 'col-bg -1)
+        (write-setting 'col-accent -1)
+        (write-setting 'col-text -1)
 
         (write-setting 'slot-0 2)
         (write-setting 'slot-1 6)
@@ -445,7 +477,7 @@
         (write-setting 'slot-3 15)
 
         (looprange i 0 4 {
-                (write-setting (ix '(slot-col-0 slot-col-1 slot-col-2 slot-col-3) i) 0xfbfcfc)
+                (write-setting (ix '(slot-col-0 slot-col-1 slot-col-2 slot-col-3) i) -1)
                 (write-setting (ix '(slot-mode-0 slot-mode-1 slot-mode-2 slot-mode-3) i) 0)
                 (write-setting (ix '(slot-min-0 slot-min-1 slot-min-2 slot-min-3) i) 0.0)
                 (write-setting (ix '(slot-max-0 slot-max-1 slot-max-2 slot-max-3) i) 100.0)

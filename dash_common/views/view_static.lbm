@@ -231,10 +231,10 @@
                             font-24 imgbuf '(0 3 3 3))
 
                         (var fill (cond
-                                ((ix state-last 7) 0x00C321)
-                                ((< soc 0.15) 0xFF3030)
-                                ((< soc 0.30) 0xFFD400)
-                                (t 0x00C321)
+                                ((ix state-last 7) color-ok)
+                                ((< soc 0.15) color-crit)
+                                ((< soc 0.30) color-warn)
+                                (t color-ok)
                         ))
                         (disp-render imgbuf pad batt-y
                             (list color-bg (colors-shade fill 0.6) fill color-text))

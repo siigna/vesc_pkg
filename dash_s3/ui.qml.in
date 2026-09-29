@@ -52,15 +52,21 @@ Item {
         "Screen, right half, and nav right", "Nav strip, centre"
     ]
 
+    // Index 0 is "whatever the theme says". It stores -1 rather than a colour,
+    // which is how an untouched cell already reads, so a theme change moves it.
+    // colorIndexOf falls back to 0 as well, so a colour that is not in this
+    // list shows as Theme instead of being misreported as one that is.
     property var colorNames: [
-        "Black", "White", "Cyan", "Orange", "Green", "Red",
+        "Theme", "Black", "White", "Cyan", "Orange", "Green", "Red",
         "Blue", "Purple", "Yellow", "Grey"
     ]
 
     property var colorValues: [
-        0x000000, 0xFBFCFC, 0x00C8FF, 0xF05A22, 0x00C321, 0xFF0303,
+        -1, 0x000000, 0xFBFCFC, 0x00C8FF, 0xF05A22, 0x00C321, 0xFF0303,
         0x1D7BE8, 0x9F20F1, 0xFFD400, 0x787878
     ]
+
+    property var themeNames: ["Dark", "Amber", "Green", "Night", "Light"]
 
     function colorIndexOf(v) {
         for (var i = 0; i < colorValues.length; i++) {
@@ -71,11 +77,18 @@ Item {
         return 0
     }
 
+    // Must stay in step with slot-catalog in lib/statistics.lisp, index for
+    // index: the stored setting is an index into that list. The twelve after
+    // Pitch were added later and had no entry here, so they could not be
+    // picked at all.
     property var slotNames: [
         "Speed", "Battery %", "Motor amps", "Battery amps", "Power",
         "Voltage", "Motor temp", "ESC temp", "Pack temp", "Duty",
         "Trip", "Odometer", "Energy used", "Regen", "Amp hours",
-        "Peak amps", "Top speed", "Pitch"
+        "Peak amps", "Top speed", "Pitch", "Min pack V", "Avg speed",
+        "Moving time", "Elapsed time", "SOC from volts", "SOC counted",
+        "SOC model", "Cadence", "Crank torque", "Rider power",
+        "Assist power", "Assist ratio"
     ]
 
     property var iconNames: [
@@ -219,6 +232,10 @@ Item {
 
             accentBox.currentIndex = colorIndexOf(parseInt(v[23]))
             textBox.currentIndex = colorIndexOf(parseInt(v[24]))
+            themeBox.currentIndex = parseInt(v[47])
+            bgBox.currentIndex = colorIndexOf(parseInt(v[48]))
+            chartSrcBox.currentIndex = parseInt(v[49])
+            chartSecsBox.currentIndex = parseInt(v[50]) === 5 ? 0 : 1
             for (var sl = 0; sl < 4; sl++) {
                 var it = slotRepeater.itemAt(sl)
                 it.source = parseInt(v[25 + sl])
@@ -484,6 +501,38 @@ Item {
                         columns: 2
 
                         Text {
+                            text: "Theme"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: themeBox
+                        Layout.fillWidth: true
+                        model: themeNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("theme", currentIndex)
+                            }
+                        }
+                    }
+
+                        Text {
+                            text: "Background"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: bgBox
+                        Layout.fillWidth: true
+                        model: colorNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("col-bg", colorValues[currentIndex])
+                            }
+                        }
+                    }
+
+                        Text {
                             text: "Dial and accent"
                             color: Utility.getAppHexColor("lightText")
                         }
@@ -520,10 +569,69 @@ Item {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: Utility.getAppHexColor("lightText")
-                        text: "The background stays black: every icon and font " +
-                              "is antialiased against it, so anything else " +
-                              "leaves dark fringes."
+                        text: "A theme sets the background, accent, text and the " +
+                              "three status colours together. The three pickers " +
+                              "override it; leave them on Theme to follow it. " +
+                              "Every palette is built against the background, so " +
+                              "text and icons stay antialiased on a pale one."
                         font.pointSize: 8
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 0
+                title: "Chart Page"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "A rolling window of one reading, autoscaled to " +
+                              "what is in it. On the display, hold a cell on the " +
+                              "live page to chart that cell instead."
+                        font.pointSize: 8
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+
+                        Text {
+                            text: "Source"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        ComboBox {
+                            id: chartSrcBox
+                            Layout.fillWidth: true
+                            model: slotNames
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("chart-src", currentIndex)
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "Window"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        ComboBox {
+                            id: chartSecsBox
+                            Layout.fillWidth: true
+                            model: ["5 s", "10 s"]
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("chart-secs", currentIndex === 0 ? 5 : 10)
+                                }
+                            }
+                        }
                     }
                 }
             }

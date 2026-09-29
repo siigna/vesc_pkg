@@ -35,6 +35,14 @@
 
                 (settings-load)
                 (settings-apply-units)
+
+                ; The theme moves every palette, and those are baked into the
+                ; indexed buffers already on screen, so this one setting needs
+                ; the full repaint the worker does. The rest are values rather
+                ; than colours and must not trigger it: the spinner repeats
+                ; while a button is held, and repainting the panel per step
+                ; would make it unusable.
+                (if (eq setting 'theme) (setq settings-redraw true))
         })
 })
 

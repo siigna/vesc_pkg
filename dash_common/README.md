@@ -100,6 +100,58 @@ presentation.
 Needs ESC firmware 7.02 for the `conf-set` symbols, `get-kill-sw` and
 `conf-store`.
 
+## Theming
+
+`theme-catalog` in `lib/colors.lisp` holds one row per theme:
+`(name bg accent text ok warn crit)`. Row 0 is the palette the dash shipped
+with, value for value, so the default look does not move. Index order is stored
+in eeprom, so **only append**.
+
+| theme | for |
+|---|---|
+| `Dark` | the original: black, cyan accent, white text |
+| `Amber` | same but a warmer accent |
+| `Green` | same with a green accent |
+| `Night` | everything pulled down and towards red, so a bright panel does not destroy dark adaptation |
+| `Light` | the only pale background. Its status colours are darkened rather than reused: the default yellow and green have almost no contrast against white |
+
+A theme supplies **defaults**, not overrides. The background, accent, text and
+the four live-cell colours each have their own setting, and a colour the rider
+picked in VESC Tool keeps winning. That works without a sentinel of its own
+because an unwritten eeprom cell reads `-1` and `setting-clamp` hands back the
+default for anything below its lower bound, so "not picked" and "follow the
+theme" are the same state. The pickers carry a **Theme** entry that writes `-1`
+to get back to it. `colorIndexOf` also falls back to that entry, so a colour
+outside the ten-item list shows as Theme rather than being misreported as one
+that is in it.
+
+The three status colours come from the theme only. Overriding them one at a
+time is three more cells and a picker each, for a choice that has to stay
+legible against the background to mean anything.
+
+**Upgrading from a build before themes**: those installs already have a colour
+written into the accent, text and live-cell cells, so switching theme will move
+the background and the status colours but leave those alone -- and white text on
+the Light background is unreadable. Set each to **Theme** once and they follow
+from then on. Existing settings are otherwise untouched: `settings-version` is
+deliberately **not** bumped for this, since that wipes every stored setting.
+
+Nothing draws a colour behind the palette's back. Every ramp is built by
+`colors-make-aa` with `color-bg` as its first entry and every full-screen wipe
+is `disp-clear color-bg`, which is what lets a pale background work at all --
+text and icons antialias against whatever the background is. There are two
+literal colours left in the tree, both in `colors.lisp`: the initial values,
+replaced on the first `settings-load`, and the blue and purple icon ramps.
+`test/render_pages.lisp` renders the live page under `Light` for exactly this
+reason: it is the row that would expose anything still assuming black.
+
+Changing the theme needs a full repaint, since the palettes are baked into the
+indexed buffers already on screen. `settings-set` and `setting-update` both
+raise `settings-redraw` for it and the worker calls `settings-apply-visual`.
+`setting-update` raises it for **this setting only**: the settings spinner
+repeats while a button is held, and repainting the panel per step would make it
+unusable.
+
 ## Rolling chart
 
 There is a chart page showing a rolling window of one live value, autoscaled to

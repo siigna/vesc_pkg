@@ -25,7 +25,7 @@
         (setq clay-pal (append (ramp (color-mix color-bg color-text 0.18))
                         (append (ramp color-accent)
                         (append (ramp color-text)
-                                (ramp 0x00C321)))))
+                                (ramp color-ok)))))
 })
 
 ; Draw one command into a buffer, shifted by yoff so a band can pretend its
