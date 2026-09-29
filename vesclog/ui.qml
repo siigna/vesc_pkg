@@ -71,7 +71,12 @@ Item {
         { title: "IMU",           keys: ["roll", "pitch", "yaw"] },
         { title: "FOC Currents",  keys: ["iq", "id", "iq-set", "id-set"] },
         { title: "FOC Voltages",  keys: ["vq", "vd"] },
-        { title: "Aux",           keys: ["ADC1", "ADC2", "Power Factor", "fault"] }
+        { title: "Aux",           keys: ["ADC1", "ADC2", "Power Factor", "fault"] },
+        // Pedal assist. Dropped along with every other absent channel on a log
+        // from a vehicle without pedals, so these cost nothing there.
+        { title: "Pedalling",     keys: ["pas_cadence", "pas_torque"] },
+        { title: "Assist Power",  keys: ["pas_rider_w", "pas_assist_w", "pas_measured_w"] },
+        { title: "PAS Output",    keys: ["pas_output", "pas_flags"] }
     ]
 
     // ── Helpers ──────────────────────────────────────────────────────────────

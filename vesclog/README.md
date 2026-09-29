@@ -18,7 +18,10 @@ tab, which means it works with the app as shipped — no custom APK.
   range is on screen
 
 Channels the log does not contain are skipped, as are channels that only ever
-read zero — an unconnected motor temperature sensor does not get a chart.
+read zero — an unconnected motor temperature sensor does not get a chart. That
+is also why the pedal assist charts cost nothing on a vehicle without pedals:
+cadence, crank torque, rider and assist power and the PAS output only appear
+when the controller logged them.
 
 ## Notes
 
