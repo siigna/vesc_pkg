@@ -57,6 +57,15 @@
 ; What the limit capture saw, for checking on a bench
 (def capture-dbg nil)
 
+; The PAS getters beyond the pedal RPM arrived in firmware 7.02. Probed once
+; rather than per frame, and used by both the sender and the walk assist
+; handler. The dash shows "no data" when they are missing rather than a page of
+; zeros.
+(def pas-ok (match (trap (app-pas-get-torque))
+        ((exit-ok (? a)) true)
+        (_ false)
+))
+
 @const-start
 
 ; Provides ext-cmd-proc
@@ -206,6 +215,14 @@
                     (setq display-ts (systime))
                     (var drive-mode-new (bufget-u8 data 0))
                     (setq light-on (bufget-u8 data 1))
+
+                    ; Byte 2 is the walk assist request. Passed straight through
+                    ; every frame rather than latched: the controller expires it
+                    ; after half a second, and sending the released state gets
+                    ; it stopped on the next frame instead of waiting for that.
+                    (if pas-ok
+                        (app-pas-walk-set (= (bufget-u8 data 2) 1))
+                    )
 
                     ; A second display that has not caught up yet keeps sending
                     ; the previous mode for a frame or two. Hold a new mode
@@ -779,14 +796,6 @@
         (load-native-lib lib-cmd-proc)
 
         (var buf-can (array-create 8))
-
-        ; The PAS getters beyond the pedal RPM arrived in 7.01. Probed once
-        ; rather than per frame, and the dash shows "no data" when they are
-        ; missing rather than a page of zeros.
-        (var pas-ok (match (trap (app-pas-get-torque))
-                ((exit-ok (? a)) true)
-                (_ false)
-        ))
 
         (loopwhile-thd ("Send CAN" 150) t {
                 (bufclear buf-can)

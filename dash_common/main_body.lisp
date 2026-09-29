@@ -41,6 +41,18 @@
 ; Stored in eeprom, so these keep their meaning.
 ; 0 none  1 page+  2 page-  3 settings  4 mode+  5 mode-
 ; 6 lights  7 backlight dim  8 cruise
+; True while a button whose long action is walk assist is being held past the
+; long-press point. Derived from the held state rather than from btn-do-action,
+; which fires once: the controller expires a walk request after half a second,
+; so it has to be re-sent for as long as the button is down. Releasing the
+; button clears btn-hold-region, which stops the request on the next frame.
+(defun walk-requested () {
+        (var idx btn-hold-region)
+        (and idx
+             (= (ix btn-actions-long idx) 13)
+             (>= btn-hold-progress 1.0))
+})
+
 (defun btn-do-action (a)
     (cond
         ((= a 1) (setq page-now (mod (+ page-now 1) page-num)))
@@ -53,6 +65,11 @@
         ; backlight control, so it is accepted and ignored rather than
         ; renumbered, which would change what stored settings mean.
         ((= a 7) nil)
+        ; Action 13 is walk assist, which is held rather than triggered: the
+        ; controller releases it unless the request keeps being refreshed. So
+        ; there is nothing to do on the edge, and walk-requested below derives
+        ; it from the button that is currently held instead.
+        ((= a 13) nil)
         ((= a 8) (comm-send-event 0))
         ((= a 9) (comm-send-event 2)) ; start or stop logging on the controller
         ; Clears the session maxima, the voltage floor and both timers. Bound

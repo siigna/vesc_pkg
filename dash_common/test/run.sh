@@ -44,10 +44,19 @@ strip_const() { grep -v '^@const-\(start\|end\)' "$1" > "$2"; }
 for f in ../lib/*.lisp;  do strip_const "$f" "build/common/lib/$(basename "$f")"; done
 for f in ../views/*.lbm; do strip_const "$f" "build/common/views/$(basename "$f")"; done
 
+# walk-requested, pulled out of the real main_body rather than copied into the
+# test, so the test cannot drift from what ships. Importing main_body whole
+# would drag in the views and the display.
+awk '/^\(defun walk-requested /,/^\}\)/' ../main_body.lisp > build/common/walk_fn.lisp
+if [ ! -s build/common/walk_fn.lisp ]; then
+    echo "could not extract walk-requested from main_body.lisp" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test; do
+for unit in battery_test walk_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

@@ -212,9 +212,11 @@
         ; The upper bound is the highest action id in btn-do-action. Raise it
         ; when an action is added, or the new id clamps to 0 and the binding
         ; quietly vanishes.
-        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 12 0))
+        ; Upper bound is the last action in btn-do-action. Raise it when actions
+        ; are added, or the new one cannot be selected at all.
+        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 13 0))
                 '(btn0-short btn1-short btn2-short btn3-short)))
-        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 12 0))
+        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 13 0))
                 '(btn0-long btn1-long btn2-long btn3-long)))
 
         (setq settings-esc-mode (setting-clamp (read-setting 'esc-mode) 0 2 0))

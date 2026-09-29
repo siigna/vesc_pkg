@@ -57,6 +57,24 @@ slot's own minimum and maximum drive the green to red ramp, and the defaults of
 Analyst uses for its own bar graphs: rider and assist power 0 to 400 W, cadence
 0 to 120 rpm. Crank torque depends on the sensor, so use its full scale.
 
+### Walk assist
+
+Button action 13 is walk assist, and it only works as a **long** action. Assign
+it to a button, then hold that button: once the hold indicator fills, the
+request goes to the controller and keeps going while the button is down.
+Releasing it stops the motor on the next frame.
+
+It is held rather than triggered on purpose. The controller expires a walk
+request after half a second, so it has to be re-sent continuously; a press that
+latched would leave the motor driving if this display lost power. `walk-requested`
+in `main_body.lisp` therefore derives the request from `btn-hold-region` and
+`btn-hold-progress` rather than from `btn-do-action`, which fires once. It rides
+in byte 2 of SID 201, which already goes out every 100 ms.
+
+The controller side needs its PAS walk assist source set to Script, and `dash_esc`
+2.5 or newer. The other dashes in this family send zero in that byte, so they
+simply never request it.
+
 The status word reports the worst active condition, in this order: `no data`,
 `no pins`, `bad ch`, `bad brk`, `bad sens`, `no trq hw`, `clipped`, `brake`,
 `sp limit`, `ok`. Those map to the bits `app-pas-get-flags` returns; `clipped`

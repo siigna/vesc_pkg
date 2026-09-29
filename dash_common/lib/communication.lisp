@@ -196,7 +196,11 @@
         (sleep 1.0)
 
         (loopwhile t {
-                (can-send-sid 201 (list drive-mode (if light-on 1 0) 0 0 0 0 0 0))
+                ; Byte 2 is the walk assist request. This frame goes out every
+                ; 100 ms, well inside the half second the controller allows
+                ; before it expires the request.
+                (can-send-sid 201 (list drive-mode (if light-on 1 0)
+                        (if (walk-requested) 1 0) 0 0 0 0 0))
 
                 (var buf (bufcreate 8))
                 (bufset-i8 buf 0 (read-setting 'whl-active))
