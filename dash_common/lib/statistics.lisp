@@ -32,6 +32,16 @@
 (def stats-pas-rider-w 0)
 (def stats-pas-assist-w 0)
 (def stats-pas-rx false)
+
+; Rolling chart samples. A byte buffer written as f32 rather than a list: the
+; sampler runs forever, and appending to a list would churn the heap for no
+; reason. CHART-MAX is ten seconds at the ten samples a second the controller
+; sends, which is the most the window setting allows.
+(def chart-max 100)
+(def chart-buf (bufcreate (* chart-max 4)))
+(def chart-head 0)
+(def chart-count 0)
+(def chart-tick 0)
 ; SID 25 byte 7. The controller reports these because the display cannot work
 ; them out from anything else it receives.
 (def kill-sw-active false)
@@ -82,9 +92,46 @@
         (return nil)
 })
 
+; One sample into the ring. Oldest is dropped once it is full.
+(defun chart-push (v) {
+        (bufset-f32 chart-buf (* chart-head 4) v)
+        (setq chart-head (mod (+ chart-head 1) chart-max))
+        (if (< chart-count chart-max) (setq chart-count (+ chart-count 1)))
+})
+
+; Sample i counting back from the newest, 0 being the newest.
+(defun chart-at (i)
+    (bufget-f32 chart-buf
+        (* 4 (mod (+ (- chart-head 1 i) (* 2 chart-max)) chart-max))))
+
+; How many samples the window covers. The ring holds ten seconds; a shorter
+; window just reads fewer of them.
+(defun chart-window () {
+        ; Clamped to the buffer, not allowed to grow it: the buffer is
+        ; allocated once at ten seconds and a larger setting must not read
+        ; past the end of it.
+        (var n (* 10 settings-chart-secs))
+        (if (> n chart-max) (setq n chart-max))
+        (if (> n chart-count) chart-count n)
+})
+
+; Cleared when the charted source changes, since the history is of the old one.
+(defun chart-reset () {
+        (setq chart-head 0)
+        (setq chart-count 0)
+})
+
 (defun stats-thread () {
         (loopwhile t {
                 (sleep 0.05)
+
+                ; The thread runs at 20 Hz but the controller only sends at 10,
+                ; so sampling every tick would just duplicate values. Every
+                ; other tick matches the data rate and makes the window length
+                ; exactly what the setting says.
+                (setq chart-tick (+ chart-tick 1))
+                (if (= 0 (mod chart-tick 2))
+                    (chart-push (slot-value settings-chart-src)))
                 (if stats-reset-now {
                         (def stats-kmh-max 0)
                         (def stats-kw-max 0)

@@ -67,6 +67,26 @@ flags, so it needs a PAS brake source configured — there is no general "brake
 applied" signal on a VESC to read otherwise. `REGEN` is derived from pack power
 going negative, so it needs nothing extra.
 
+## Rolling chart
+
+There is a chart page showing a rolling window of one live value, autoscaled to
+what is in the window, with the source and window on the left and the span on
+the right.
+
+The source is any `slot-catalog` entry, so the chart gets its label, unit and
+formatting for free and can plot anything a live cell can. Two settings pick it:
+`chart-src` (catalog index) and `chart-secs` (5 or 10).
+
+Samples come from `stats-thread`, which runs whatever page is showing, so the
+window is already full when the page is opened. That thread ticks at 20 Hz but
+the controller only sends at 10, so it samples every other tick: sampling faster
+than the data arrives would only duplicate values and make the window shorter
+than it claims. The ring is a byte buffer written as f32 rather than a list,
+since the sampler runs forever and appending to a list would churn the heap.
+
+Like the PAS page it is **off in the default page mask**; enable it in the
+settings page, bit 5.
+
 ## PAS
 
 There is a PAS page showing crank cadence, crank torque, rider power, motor

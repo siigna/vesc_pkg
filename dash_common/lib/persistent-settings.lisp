@@ -12,6 +12,8 @@
 
 ; Rotating pages in the button-0 cycle. Settings page sits at page-num.
 (def settings-page-mask 0xF)
+(def settings-chart-src 4)
+(def settings-chart-secs 10)
 
 (def settings-setting-mask 0xF)
 
@@ -127,6 +129,8 @@
 
     (batt-ramp . (77 i))
     (splash-en . (78 i))
+    (chart-src . (79 i))
+    (chart-secs . (80 i))
 ))
 
 (defun print-settings ()
@@ -206,7 +210,7 @@
         ; The PAS page is bit 4 and is off in the default mask, since most
         ; vehicles have no pedals. Raise the upper bound when pages are added or
         ; the new page cannot be enabled at all.
-        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x1F 0xF))
+        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x3F 0xF))
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x7FF 0xF))
 
         ; The upper bound is the highest action id in btn-do-action. Raise it
@@ -228,6 +232,12 @@
         (setq color-text (setting-clamp (read-setting 'col-text) 0 0xFFFFFF 0xfbfcfc))
         ; Upper bound is the last index of slot-catalog. Raise it when the
         ; catalog grows, or the new sources cannot be selected at all.
+        ; Which slot-catalog source the rolling chart plots, and over how long.
+        ; Reusing the catalog means the chart gets its label, unit and
+        ; formatting for free and can plot anything a live cell can.
+        (setq settings-chart-src (setting-clamp (read-setting 'chart-src) 0 29 4))
+        (setq settings-chart-secs (setting-clamp (read-setting 'chart-secs) 5 10 10))
+
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
         (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF 0xfbfcfc))

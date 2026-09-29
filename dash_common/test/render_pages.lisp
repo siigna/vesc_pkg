@@ -69,8 +69,19 @@
 ; happen before the static strip is drawn: the strip shows one dot per page, so
 ; changing the page count afterwards would alter the strip part way through the
 ; run and every page captured after that point would differ.
-(setq settings-page-mask 0x1F)
+(setq settings-page-mask 0x3F)
 (settings-apply-pages)
+
+; The chart plots whatever has been sampled, so the harness fills the ring
+; itself rather than waiting on the stats thread. A fixed shape, so the trace
+; is the same on every run: a rise, a plateau and a fall, which also exercises
+; the autoscaling at both ends.
+(setq settings-chart-src 4)
+(setq settings-chart-secs 10)
+(looprange i 0 100
+    (chart-push (cond ((< i 30) (* 0.08 i))
+                      ((< i 60) 2.4)
+                      (t (- 2.4 (* 0.05 (- i 60)))))))
 
 ; Plausible PAS values, so the page shows something rather than zeros.
 (def stats-pas-rx true)

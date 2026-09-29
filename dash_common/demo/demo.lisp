@@ -42,8 +42,14 @@
 
 ; Every page, so the PAS one is reachable. Before the strip is drawn, since the
 ; strip shows one dot per page.
-(setq settings-page-mask 0x1F)
+(setq settings-page-mask 0x3F)
 (settings-apply-pages)
+
+; Chart the speed, which is what makes the ride legible: the climb, the brake,
+; the walking pace and the coast all show up in one trace. Set explicitly
+; rather than left to the stored default, so the render is deliberate.
+(setq settings-chart-src 0)
+(setq settings-chart-secs 10)
 
 ; Standing still, battery nearly full, nothing happening yet.
 (def stats-vin 58.7) (def stats-battery-soc 0.92) (def stats-battery-ah 20.0)
@@ -75,8 +81,9 @@
 ; 110-125  rolling again, coasting with regen into the pack
 ; 125-135  the cooling fan comes on
 ; 135-142  the kill switch, which outranks everything else
-; 142-210  pages: trip, session, battery, back to live
-(def demo-frames 210)
+; 142-160  the rolling chart, which is fed by the ride above
+; 160-228  pages: trip, session, battery, back to live
+(def demo-frames 228)
 
 (defun demo-state (i) {
         (var f (to-float i))
@@ -189,9 +196,10 @@
 (defun demo-page (i)
     (cond
         ((< i 142) 4)       ; PAS, which is where the strip conditions play out
-        ((< i 160) 1)       ; Trip
-        ((< i 178) 2)       ; Session
-        ((< i 196) 3)       ; Battery
+        ((< i 160) 5)       ; Chart, showing the ride that just happened
+        ((< i 178) 1)       ; Trip
+        ((< i 196) 2)       ; Session
+        ((< i 214) 3)       ; Battery
         (t 0)               ; Live
 ))
 
@@ -203,6 +211,11 @@
 
 (looprange i 0 demo-frames {
         (demo-state i)
+
+        ; The chart is normally fed by the stats thread, which the harness does
+        ; not run, so push a sample per frame here instead. The frame rate is
+        ; the controller's send rate, which is what the sampler uses too.
+        (chart-push (slot-value settings-chart-src))
 
         (var p (demo-page i))
         (setq page-now p)
