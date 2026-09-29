@@ -110,6 +110,21 @@
 (def sig-reported-live sig-reported)
 (defun sig-reported () true)
 
+; The session page's first field is uptime, which is different on every run and
+; made the two session stills churn in git each time the demo was rendered.
+; Pinned to a plausible ride length, the same way the test harness pins it.
+(def session-state-live get-page-session-state)
+(defun get-page-session-state () (setix (session-state-live) 0 1187))
+
+; The indicator blink is normally timed off the wall clock, which made the
+; frames -- and so the stills cut from them -- depend on how long the render
+; took. Derived from the frame index instead: the video still blinks, at five
+; frames on and five off, and every frame is the same on every run. The real
+; blink-on is exercised by its own arithmetic in the test suite.
+(def demo-frame 0)
+(def blink-on-live blink-on)
+(defun blink-on () (< (mod demo-frame 10) 5))
+
 ; Chart the speed, which is what makes the ride legible: the climb, the brake,
 ; the walking pace and the coast all show up in one trace. Set explicitly
 ; rather than left to the stored default, so the render is deliberate.
@@ -392,13 +407,16 @@
         (t 0)               ; Live: themes, then the colour rules
 ))
 
+; The strip is stepped synchronously below rather than run as a thread: with
+; the thread alongside this loop, whether a changed field had been painted
+; before the frame was saved depended on how long the render took, and the
+; frames -- and the stills cut from them -- were not reproducible.
 (view-static-frame)
-(spawn view-static-thread)
-(sleep 0.6)
 
 (def last-page -1)
 
 (looprange i 0 demo-frames {
+        (setq demo-frame i)
         (demo-state i)
 
         ; The chart is normally fed by the stats thread, which the harness does
@@ -420,8 +438,12 @@
         (if (or force (!= p last-page)) (pg true) (pg false))
         (setq last-page p)
 
-        ; Let the static strip thread pick up the changes.
-        (sleep 0.08)
+        ; One strip pass per frame, in step with the page, which is what makes
+        ; the output the same on every run. Overlays cover the strip, so the
+        ; pass is skipped and the repaint is left to the frame after.
+        (if (overlay-showing)
+            (setq view-force-static true)
+            (view-static-step))
 
         (save-active-img (str-merge "out/BOARD_" (str-from-n i "%04d") ".png"))
 })

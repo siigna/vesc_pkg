@@ -139,16 +139,20 @@
 (def stats-pas-rider-w 153) (def stats-pas-assist-w 298)
 (def stats-pas-output 0.42) (def stats-pas-flags 0)
 
+; Stepped rather than threaded, so a changed field is always painted before the
+; page is captured. With the thread running alongside, that was a race, and a
+; golden that depends on one is worse than no golden.
 (view-static-frame)
-(spawn view-static-thread)
-(sleep 0.6)
+(view-static-step)
 
 (looprange p 0 (length pages) {
         (setq page-now p)
         (var pg (ix pages p))
         (pg true)
         (pg false)
-        (sleep 0.3)
+        (if (overlay-showing)
+            (setq view-force-static true)
+            (view-static-step))
         (save-active-img (str-merge "out/BOARD_page" (str-from-n p "%d") ".png"))
 })
 
@@ -179,13 +183,13 @@
 (setq sig-req (bitwise-or sig-hazard sig-beam))
 (setq view-force-static true)
 (view-static-frame)
-(sleep 0.3)
+(view-static-step)
 (save-active-img "out/BOARD_sig_request.png")
 (defun sig-reported () true)
 (setq sig-req 0)
 (setq view-force-static true)
 (view-static-frame)
-(sleep 0.3)
+(view-static-step)
 
 ; The live page once more under the Light theme, which is the only row with a
 ; pale background and so the one that would expose anything still assuming a
@@ -197,7 +201,7 @@
 (settings-set 'theme 4)
 (settings-apply-visual)
 (view-static-frame)
-(sleep 0.3)
+(view-static-step)
 (page-live true)
 (page-live false)
 (sleep 0.3)
@@ -219,7 +223,7 @@
 (def stats-kw -1.8)
 (settings-apply-visual)
 (view-static-frame)
-(sleep 0.3)
+(view-static-step)
 (page-live true)
 (page-live false)
 (sleep 0.3)

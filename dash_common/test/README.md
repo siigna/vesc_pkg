@@ -55,3 +55,19 @@ it is.
 Bus timing, DSI lane rates, panel initialisation, touch, CAN. Anything that
 needs the hardware. `hw_test.lbm` in the vesc_express board directory covers
 that side, on the board.
+
+## Why the strip is stepped, not threaded
+
+Both harnesses call `view-static-step` once per captured frame instead of
+spawning `view-static-thread`. With the thread running alongside, whether a
+changed status field had been painted before the frame was saved depended on
+how long the render took -- so a golden could pass or fail on timing, and the
+demo's stills changed on every run.
+
+That is what the one unexplained `p4_live_hold` failure was: it reported a
+difference while the pixels were identical, which is what a half-written or
+half-painted frame looks like.
+
+`view-static-thread` now calls the same step in its loop, so the shipping path
+and the harness path are the same code.
+

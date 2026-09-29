@@ -132,23 +132,20 @@
         (disp-render imgbuf x y colors)
 })
 
-(defun view-static-thread () {
-        (var update-state (map (fn (x) t) (view-static-state)))
-        (var state-last (view-static-state))
+; Which fields changed, and what they were, kept out here rather than as
+; locals of the thread so that one pass can be run on its own. The offline
+; render harness and the demo drive view-static-step directly for that reason:
+; with the thread running alongside them, whether a changed field had been
+; painted before the frame was saved was a race, and their output was not
+; reproducible.
+(def view-static-update (map (fn (x) t) (view-static-state)))
+(def view-static-last (view-static-state))
 
-        (view-static-frame)
-
-        (loopwhile t {
-            ; The quick shade and the PIN keypad cover the whole panel above
-            ; the nav strip, so the strip, the speed and the battery bar have to
-            ; stop repainting while one is up or they would draw over it a
-            ; field at a time.
-            ; Holding the force flag means closing it repaints the lot: their
-            ; dirty tracking was paused and has no idea what the shade covered.
-            (if (overlay-showing) {
-                    (setq view-force-static true)
-                    (sleep 0.05)
-            } {
+; One pass. Returns nothing; draws whatever changed since the last call.
+(defun view-static-step () {
+        (var update-state view-static-update)
+        (var state-last view-static-last)
+        {
                 ; --- Status strip -------------------------------------------
                 (var pill-y 8)
                 (var pill-h 40)
@@ -289,9 +286,27 @@
                     (setix update-state i (or force (not-eq (ix state-last i) (ix state-new i))))
                 )
                 (setq state-last state-new)
+                (setq view-static-last state-last)
+        }
+})
 
-                (sleep 0.05)
-            })
+(defun view-static-thread () {
+        (setq view-static-update (map (fn (x) t) (view-static-state)))
+        (setq view-static-last (view-static-state))
+
+        (view-static-frame)
+
+        (loopwhile t {
+            ; The quick shade and the PIN keypad cover the whole panel above
+            ; the nav strip, so the strip, the speed and the battery bar have to
+            ; stop repainting while one is up or they would draw over it a
+            ; field at a time. Holding the force flag means closing it repaints
+            ; the lot: their dirty tracking was paused and has no idea what the
+            ; overlay covered.
+            (if (overlay-showing)
+                (setq view-force-static true)
+                (view-static-step))
+            (sleep 0.05)
         })
 })
 
