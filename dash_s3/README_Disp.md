@@ -69,9 +69,13 @@ Which pages are in the rotation is set by the page mask in the settings page.
 
 - Fonts are pre-rendered by `font/generate_fonts`, like the other dashes.
   Preparing them on the device would be affordable here — unlike on a C3 —
-  but it would mean shipping Roboto-Bold.ttf, and at ~145 kB that is more
-  than the package's entire 128 kB lisp budget. As built it sits at 88% of
-  it, so there is room for a few more glyph sizes but not many.
+  but it would mean shipping Roboto-Bold.ttf, which at ~145 kB is more than
+  the fonts and the whole source put together.
+
+  Note that the "Lisp data size ... / 131072 bytes" line the package build
+  prints is not this package's real limit: that divisor is hardcoded and is
+  the STM32's flash page. A VESC Express reports as a custom module and gets
+  512 kB, shared between the source and the LBM image.
 - There are no bitmap assets. The other dashes ship icons sized for a
   240-wide panel, which would be lost here, so the status indicators are drawn
   as text pills. The layout is driven by the constants at the top of

@@ -3,7 +3,7 @@ VESC_TOOL ?= vesc_tool
 all: dash_s3.vescpkg
 
 dash_s3.vescpkg: README_Disp-gen.md ui.qml version.lisp
-	$(VESC_TOOL) --buildPkgFromDesc pkgdesc.qml --testPkgDesc 'custom:test' --testPkgDesc 'custom:ws s3 touch lcd 4' --testPkgDesc 'vesc:test'
+	$(VESC_TOOL) --reduceLisp --buildPkgFromDesc pkgdesc.qml --testPkgDesc 'custom:test' --testPkgDesc 'custom:ws s3 touch lcd 4' --testPkgDesc 'vesc:test'
 
 VERSION=`cat version`
 
