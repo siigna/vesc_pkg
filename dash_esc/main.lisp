@@ -853,8 +853,9 @@
                 ; Bytes 4 and 5 were spare, and PAS status and output need one
                 ; byte each, so they ride along rather than taking a frame.
                 (if pas-ok {
-                        (bufset-u8 buf-can 4 (app-pas-get-flags))
-                        (bufset-u8 buf-can 5 (clamp01 (app-pas-get-output) 200))
+                        ; Flags are 16 bits: the set already needs nine.
+                        (bufset-u16 buf-can 4 (app-pas-get-flags))
+                        (bufset-u8 buf-can 6 (clamp01 (app-pas-get-output) 200))
                 })
                 (can-send-sid 25 buf-can)
 

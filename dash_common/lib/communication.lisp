@@ -146,8 +146,8 @@
                     ; Bytes 4 and 5 were spare. PAS status and output go here
                     ; rather than in a frame of their own, since one byte each
                     ; is all they need.
-                    (def stats-pas-flags (bufget-u8 data 4))
-                    (def stats-pas-output (/ (bufget-u8 data 5) 200.0))
+                    (def stats-pas-flags (bufget-u16 data 4))
+                    (def stats-pas-output (/ (bufget-u8 data 6) 200.0))
             })
             ((= id 26) {
                     (def stats-pas-cadence (/ (bufget-u16 data 0) 10.0))
