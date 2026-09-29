@@ -1,0 +1,167 @@
+; The label/value page grid, as a Clay description instead of arithmetic.
+;
+; The hand-written version in view_pages.lbm computes col-w, col-lbl-w,
+; col-val-w, col-gap, page-rows, grid-col-x, grid-lbl-x, grid-val-x and
+; grid-y, and then has to be told how wide a label may be. That is what
+; clipped "Amp Hours" to "mp Hours" when the 800x480 panel went to four
+; columns: col-lbl-w was a fraction of the column, not what the text needed.
+;
+; Here the label and value each take half the column, so the boundary lines
+; up across every row without a constant, and a label that does not fit is a
+; visible overflow rather than a silent crop. There are no coordinates.
+;
+; Needs clay-layout, so only on a board built with HW_USE_CLAY. Not wired
+; into page-trip yet: none of this has run on hardware, and the page it would
+; replace works.
+;
+; Measured on the desktop repl against the hand-written page, 800x480:
+;
+;   layout only                     0.07 ms
+;   layout + repaint the page       0.89 ms
+;   hand-written, full redraw       0.92 ms
+;   layout + repaint what changed   0.16 ms
+;   hand-written, incremental       0.07 ms
+;
+; So a full redraw is a wash, and in steady state this costs about 0.09 ms
+; more per frame than hand-tuned arithmetic, because the layout is recomputed
+; every frame where the hand-written page just compares eight numbers. At
+; 25 Hz that is a fraction of a percent of the budget on a desktop and still
+; under a tenth of it scaled to the hardware. What it buys is no coordinate
+; arithmetic, no label width to get wrong, and layout that follows content:
+; when a value changes width its label moves with it, and the diff repaints
+; both. The hand-written grid cannot do that at all -- its labels are drawn
+; once and never touched.
+
+(def clay-fonts nil)    ; set by the board's main.lisp: (list font-16 font-24)
+(def clay-f-small 0)
+(def clay-f-mid 1)
+
+@const-start
+
+; One label/value row. Two equal halves: label pushed right, value pushed
+; left, so they meet in the middle of the column.
+(defun clay-cell (lbl val)
+    (list 'row '(w grow) (list 'h page-row-h)
+        (list 'box '(w grow) '(alignx right)
+            (list 'text (list 'font clay-f-mid) '(size 24) '(fg 3) (cons 'str lbl)))
+        (list 'box '(w grow) '(alignx left) '(pad 6)
+            (list 'text (list 'font clay-f-mid) '(size 24) '(fg 3) (cons 'str val)))))
+
+; page-cols columns of 8/page-cols rows, filled column-first to match the
+; order the hand-written grid uses.
+(defun clay-grid-desc (labels vals) {
+        (var rows (/ 8 page-cols))
+        (var cols nil)
+        (looprange c 0 page-cols {
+                (var cells nil)
+                (looprange r 0 rows {
+                        (var i (+ (* c rows) r))
+                        (setq cells (cons (clay-cell (ix labels i) (ix vals i)) cells))
+                })
+                (setq cols (cons (append (list 'col '(w grow) '(h grow))
+                                         (reverse cells)) cols))
+        })
+        (append (list 'row '(w grow) '(h grow) '(gap 8)) (reverse cols))
+})
+
+; Draw a command list into one page-sized buffer and blit it. Everything on
+; this page is one colour, so an indexed4 buffer and the standard text ramp
+; are enough.
+(defun clay-draw-page (cmds) {
+        (var buf (img-buffer dm-pool 'indexed4 page-w page-h))
+        (img-clear buf)
+        (loopforeach c cmds {
+                (var k (ix c 0))
+                (cond
+                    ((eq k 'rect)
+                        (if (> (ix c 5) 0)
+                            (img-rectangle buf (ix c 1) (ix c 2) (ix c 3) (ix c 4)
+                                3 '(filled) (list 'rounded (ix c 6)))))
+                    ((eq k 'text) {
+                        ; Clay gives the box top; ttf-text places a baseline.
+                        (var fnt (ix clay-fonts (ix c 6)))
+                        (ttf-text buf (ix c 1) (+ (ix c 2) (ttf-ascender fnt))
+                            '(0 1 2 3) fnt (ix c 7))
+                    })
+                    (t nil))
+        })
+        (disp-render buf page-x page-y colors-text-aa)
+})
+
+(defun clay-grid-page (labels vals)
+    (clay-draw-page (clay-layout (clay-grid-desc labels vals)
+                                 page-w page-h clay-fonts)))
+
+; --- incremental redraw ----------------------------------------------------
+;
+; Redrawing the whole page costs about the same as the hand-written page's
+; full redraw, but the hand-written one only does that on a page switch; the
+; rest of the time it touches the fields that changed. Clay rebuilds the
+; command list every frame, so the equivalent is to compare it against the
+; last one and repaint only the commands that moved.
+;
+; Only text is handled incrementally. A changed rectangle is rare on these
+; pages, and getting overlap right in general needs a clip stack; when one
+; changes we repaint the page rather than guess.
+
+(def clay-prev nil)
+
+(defun clay-cmd-eq (a b)
+    (and a b
+         (eq (ix a 0) (ix b 0))
+         (= (ix a 1) (ix b 1)) (= (ix a 2) (ix b 2))
+         (= (ix a 3) (ix b 3)) (= (ix a 4) (ix b 4))
+         (= (ix a 5) (ix b 5))
+         (if (eq (ix a 0) 'text)
+             (and (= (ix a 6) (ix b 6)) (eq (ix a 7) (ix b 7)))
+             (= (ix a 6) (ix b 6)))))
+
+; Repaint one text command, erasing whatever the previous one covered so a
+; number that got shorter does not leave its tail behind.
+(defun clay-repaint (new old) {
+        (var x (ix new 1))
+        (var y (ix new 2))
+        (var w (ix new 3))
+        (var h (ix new 4))
+        (if old {
+                (var x2 (+ (ix old 1) (ix old 3)))
+                (var y2 (+ (ix old 2) (ix old 4)))
+                (if (< (ix old 1) x) (setq x (ix old 1)))
+                (if (< (ix old 2) y) (setq y (ix old 2)))
+                (setq w (- (if (> x2 (+ x w)) x2 (+ x w)) x))
+                (setq h (- (if (> y2 (+ y h)) y2 (+ y h)) y))
+        })
+        (if (and (> w 0) (> h 0)) {
+                (var buf (img-buffer dm-pool 'indexed4 w h))
+                (img-clear buf)
+                (var fnt (ix clay-fonts (ix new 6)))
+                (ttf-text buf (- (ix new 1) x)
+                          (+ (- (ix new 2) y) (ttf-ascender fnt))
+                          '(0 1 2 3) fnt (ix new 7))
+                (disp-render buf (+ page-x x) (+ page-y y) colors-text-aa)
+        })
+})
+
+; force = true repaints everything, as a page switch must.
+(defun clay-grid-page-inc (labels vals force) {
+        (var cmds (clay-layout (clay-grid-desc labels vals)
+                               page-w page-h clay-fonts))
+
+        (if (or force (eq clay-prev nil)
+                (not-eq (length cmds) (length clay-prev)))
+            (clay-draw-page cmds)
+            (looprange i 0 (length cmds) {
+                    (var new (ix cmds i))
+                    (var old (ix clay-prev i))
+                    (if (not (clay-cmd-eq new old))
+                        (if (eq (ix new 0) 'text)
+                            (clay-repaint new old)
+                            ; a moved rectangle: repaint the page instead of
+                            ; trying to work out what it uncovered
+                            (clay-draw-page cmds)))
+            }))
+
+        (setq clay-prev cmds)
+})
+
+@const-end
