@@ -55,14 +55,33 @@
 (def battery-a-connected true)
 (def bms-soc 0.92)
 (def bms-load 0.0)
+; One cell 0.3 V down and one being balanced, which is the case the aggregates
+; on the battery page cannot show and the cells page exists for. Derived from
+; the same curve as everything else, so the bars agree with the pack voltage.
+(def bms-weak-cell 7)
+(def bms-balancing-cell 3)
+
+(defun demo-cell-n (i) {
+        (var vc (- (demo-cell-v bms-soc) (* 0.004 bms-load)))
+        (+ (if (= i bms-weak-cell) (- vc 0.30) vc)
+           (* 0.004 (mod i 5)))
+})
+
 (defun get-bms-val (k)
     (if (rest-args)
-        0.0
+        (let ((i (ix (rest-args) 0)))
+            (cond
+                ((eq k 'bms-v-cell) (demo-cell-n i))
+                ((eq k 'bms-bal-state) (= i bms-balancing-cell))
+                (t 0.0)))
         (let ((vc (- (demo-cell-v bms-soc) (* 0.004 bms-load))))
             (cond
                 ((eq k 'bms-v-tot) (* vc config-battery-cells))
-                ((eq k 'bms-v-cell-min) (- vc 0.02))
-                ((eq k 'bms-v-cell-max) (+ vc 0.01))
+                ; From the per-cell values rather than a guess either side of
+                ; the average, so the battery page's minimum is the weak cell
+                ; the cells page draws.
+                ((eq k 'bms-v-cell-min) (demo-cell-n bms-weak-cell))
+                ((eq k 'bms-v-cell-max) (+ vc 0.016))
                 ((eq k 'bms-cell-num) config-battery-cells)
                 ((eq k 'bms-i-in-ic) bms-load)
                 ((eq k 'bms-ah-cnt) (* config-battery-ah (- 1.0 bms-soc)))
@@ -79,10 +98,17 @@
 (display-to-img)
 (settings-load) (settings-build) (colors-build) (settings-apply-units)
 
-; Every page, so the PAS one is reachable. Before the strip is drawn, since the
-; strip shows one dot per page.
-(setq settings-page-mask 0x7F)
+; Every page, so the PAS and cells ones are reachable. Before the strip is
+; drawn, since the strip shows one dot per page.
+(setq settings-page-mask 0xFF)
 (settings-apply-pages)
+
+; The strip shows the signals a bike-controls node reports and falls back to
+; what the display asked for when there is none. This ride has one, so the
+; indicator and high beam beats below mean the reported state. The request path
+; gets its own beat, which flips this back.
+(def sig-reported-live sig-reported)
+(defun sig-reported () true)
 
 ; Chart the speed, which is what makes the ride legible: the climb, the brake,
 ; the walking pace and the coast all show up in one trace. Set explicitly
@@ -133,7 +159,15 @@
 ; 142-160  the rolling chart, which is fed by the ride above
 ; 160-178  controller settings, with unsaved changes pending
 ; 178-246  pages: trip, session, battery, back to live
-(def demo-frames 246)
+; 246-266  the cells page: one bar per cell, with a weak one
+; 266-286  the quick shade, with the mode and cruise changing under it
+; 286-296  back on a page, showing hazard and high beam taken from the request
+;          rather than from a reported state -- the shade covers the strip, so
+;          this cannot be shown while the shade is up
+; 296-310  holding a live cell, then 310-316 the chart it opens
+; 316-340  the Night and Light themes
+; 340-356  a colour rule per live cell
+(def demo-frames 356)
 
 (defun demo-state (i) {
         (var f (to-float i))
@@ -257,7 +291,83 @@
         (setq drive-mode (cond ((< f 30.0) 1) ((< f 95.0) 3) (t 2)))
         (setq cruise-control-active (and (> f 45.0) (< f 60.0)))
         (setq cruise-control-speed 24.0)
+
+        ; --- The parts that are about the display rather than the ride -------
+
+        ; Holding a live cell fills its highlight and then opens the chart on
+        ; that cell. Both the held region and the touch point are driven here,
+        ; the way the input thread would, because there is no finger.
+        (if (and (>= f 296.0) (< f 310.0)) {
+                (setq touch-x (+ (live-cell-x 1) 10))
+                (setq touch-y (+ (live-cell-y 1) 30))
+                (setq btn-hold-region (touch-region touch-x touch-y))
+                (setq btn-hold-progress (lerp 0.0 1.0 (/ (- f 296.0) 13.0)))
+        }
+        (if (< f 310.0) (setq btn-hold-region nil)))
+
+        ; At the end of the hold the press fires, which is what the chart page
+        ; after it is showing.
+        (if (and (>= f 310.0) (< f 311.0)) {
+                (setq btn-hold-region nil)
+                (setq settings-chart-src (ix settings-slots 1))
+        })
+
+        ; Something happening under the shade, so its buttons are visibly
+        ; reporting state rather than sitting still.
+        (if (and (>= f 274.0) (< f 286.0)) (setq drive-mode 3))
+        (if (and (>= f 278.0) (< f 286.0)) (setq cruise-control-active true))
+
+        ; The signal request path: no bike-controls node reporting, so the
+        ; strip shows what was asked for. Hazard lights both arrows. Shown on a
+        ; page rather than under the shade, which covers the strip.
+        ; Cleared outside the window rather than only before it: an else that
+        ; also tested the frame left the request latched for the rest of the
+        ; run, and the hazard arrows stayed up over every beat after it.
+        (if (and (>= f 286.0) (< f 296.0)) {
+                (setq sig-req (bitwise-or sig-hazard sig-beam))
+                (defun sig-reported () false)
+        } {
+                (setq sig-req 0)
+                (defun sig-reported () true)
+        })
+
+        ; Themes. Row 0 is the palette the dash shipped with, so the ride above
+        ; ran on it; these are the two that change more than the accent.
+        (if (and (>= f 316.0) (< f 328.0)) (demo-theme 3))
+        (if (and (>= f 328.0) (< f 340.0)) (demo-theme 4))
+        (if (>= f 340.0) (demo-theme 0))
+
+        ; Colour rules, one per cell, with ranges the values actually land in.
+        (if (and (>= f 340.0) (< f 341.0)) {
+                (looprange c 0 4 {
+                        (setix settings-slot-modes c (+ c 1))
+                        (setix settings-slot-mins c 0.0)
+                        (setix settings-slot-maxs c (ix '(40.0 80.0 100.0 50.0) c))
+                })
+                (setix settings-slots 3 4)
+        })
 })
+
+; A theme change is a whole-screen repaint, since the palettes are baked into
+; the buffers already on screen. Applied only on a change, or every frame of
+; the beat would repaint and the incremental redraw being demonstrated would
+; not be.
+(def demo-theme-now 0)
+(defun demo-theme (n)
+    (if (!= n demo-theme-now) {
+            (setq demo-theme-now n)
+            (setq settings-theme n)
+            (theme-apply-status)
+            (setq color-bg (theme-bg))
+            (setq color-accent (theme-accent))
+            (setq color-text (theme-text))
+            (setq settings-slot-cols (map (fn (c) (theme-text)) '(0 1 2 3)))
+            (colors-build)
+            (disp-clear color-bg)
+            (setq view-force-static true)
+            (view-static-frame)
+            (setq last-page -1)
+    }))
 
 ; Which page is on screen for a given frame. The PAS page carries the ride, then
 ; the others get a look in.
@@ -269,7 +379,14 @@
         ((< i 196) 1)       ; Trip
         ((< i 214) 2)       ; Session
         ((< i 232) 3)       ; Battery
-        (t 0)               ; Live
+        ((< i 246) 0)       ; Live
+        ((< i 266) 7)       ; Cells
+        ; The quick shade is one past the settings page, which is page-num.
+        ((< i 286) (+ page-num 1))
+        ((< i 296) 1)       ; Trip, so the strip is visible for the signals
+        ((< i 310) 0)       ; Live, with a cell being held
+        ((< i 316) 5)       ; Chart, now on the cell that was held
+        (t 0)               ; Live: themes, then the colour rules
 ))
 
 (view-static-frame)
@@ -290,9 +407,14 @@
         (setq page-now p)
         (var pg (ix pages p))
 
-        ; Force a full redraw on a page change, incremental otherwise, which is
-        ; exactly what the dash does.
-        (if (!= p last-page) (pg true) (pg false))
+        ; Force a full redraw on a page change, incremental otherwise, which
+        ; is exactly what the dash does -- including honouring view-force-pages,
+        ; which view-static-frame raises after it has wiped the screen. Without
+        ; that, leaving the quick shade or changing theme left the page with its
+        ; labels erased and only the changed values redrawn.
+        (var force view-force-pages)
+        (setq view-force-pages false)
+        (if (or force (!= p last-page)) (pg true) (pg false))
         (setq last-page p)
 
         ; Let the static strip thread pick up the changes.

@@ -19,4 +19,12 @@
 178:186:trip:Trip page: range, distance, energy and efficiency.
 196:204:session:Session page: the maxima since the last reset.
 214:222:battery:Battery page: a 20 series pack, cell voltages and the charge counters.
-232:238:live:Live page. Any four values, each cell cycled by touch.
+232:240:live:Live page: any four values, each chosen in settings.
+246:256:cells:One bar per cell, scaled to the spread rather than to an absolute range. One cell is 0.3 V down; the outlined column is it.
+266:278:shade:The quick shade, a swipe down from any page. Six buttons, each one an action, showing what its control is doing.
+286:294:signals:Hazard and high beam, asked for over CAN. With nothing on the bus reporting back, the strip shows what was requested.
+296:305:hold-chart:Holding a live cell fills its highlight...
+310:313:chart-picked:...and opens the chart already plotting that cell.
+316:322:theme-night:Night: every colour pulled down and towards red, so a bright panel does not cost dark adaptation.
+328:334:theme-light:Light: the only pale background, with the status colours darkened to stay legible on it.
+340:350:colour-rules:A colour rule per cell. Ramp, heat, low-is-bad for a state of charge, and green for a negative value.

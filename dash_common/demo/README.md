@@ -65,10 +65,26 @@ battery current from assist power and pack voltage.
 | 60–80 | into the speed taper: the rider keeps working, assist is pulled back, `splim` |
 | 80–95 | brake, assist cut at once, speed falling, `brake` |
 | 95–110 | stopped, walk assist nudging along at walking pace, `walk` |
-| 110–180 | the other pages: trip, session, battery, live |
+| 110–125 | rolling again, coasting, regen into the pack |
+| 125–142 | the cooling fan, then the kill switch, which outranks everything |
+| 142–178 | the rolling chart, then the controller settings page |
+| 178–246 | trip, session, battery, live |
+| 246–266 | the cells page, with one cell 0.3 V down |
+| 266–286 | the quick shade, with the mode and cruise changing under it |
+| 286–296 | hazard and high beam taken from the request rather than a report |
+| 296–316 | holding a live cell, then the chart it opens on that cell |
+| 316–340 | the Night and Light themes |
+| 340–356 | a colour rule per live cell |
 
 Stills are copied out of the sequence into `stills/`, one per phase, which is
 what to use for screenshots.
+
+The signal beat is on a page rather than under the shade on purpose: the shade
+covers the status strip, so the arrows it is demonstrating would not be on
+screen. And `sig-reported` is pinned true for the ride and flipped false only
+for that beat, because the strip shows what a bike-controls node reports when
+there is one and falls back to the request when there is not -- both halves are
+worth seeing.
 
 ## What it is good for beyond looking nice
 
@@ -79,3 +95,17 @@ ever render one state: the first run of this showed the speed limited status
 reading `sp lim` on the p4, because the four column layout gives the value
 column less room than the two column one and the string was cut mid-word. The
 status words are five characters for that reason.
+
+It has now caught two more, both of which the goldens could not:
+
+- The signal request change made the strip fall back to the request when
+  nothing reports, and **the demo's indicator beat silently went blank** --
+  `indicate-l-on` was still being set, but nothing read it any more. The
+  goldens did not catch it because the test harness pins `sig-reported`; the
+  demo did not pin it and so showed the truth.
+- The frame loop did not honour `view-force-pages`, which `view-static-frame`
+  raises after wiping the screen. Leaving the quick shade or changing theme
+  therefore left the page with its labels erased and only its changed values
+  redrawn. The real `view-pages-thread` has always honoured that flag, so this
+  was the demo drifting from the shipping path rather than a dash bug -- but it
+  is exactly the kind of drift that makes a demo lie.
