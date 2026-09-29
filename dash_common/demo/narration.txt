@@ -15,7 +15,8 @@
 125:130:fan:The cooling fan is running, read back from the auxiliary output.
 135:138:kill-switch:Kill switch active. It outranks every other indicator.
 142:152:chart:A rolling ten second chart. Any live value, autoscaled to the window.
-160:168:trip:Trip page: range, distance, energy and efficiency.
-178:186:session:Session page: the maxima since the last reset.
-196:204:battery:Battery page: pack state, cell voltage and the charge counters.
-214:220:live:Live page. Any four values, each cell cycled by touch.
+160:172:settings:Controller settings, changed from the dash. Starred rows need the kill switch.
+178:186:trip:Trip page: range, distance, energy and efficiency.
+196:204:session:Session page: the maxima since the last reset.
+214:222:battery:Battery page: pack state, cell voltage and the charge counters.
+232:238:live:Live page. Any four values, each cell cycled by touch.

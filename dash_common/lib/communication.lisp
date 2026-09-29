@@ -6,7 +6,7 @@
 
 (defun proc-sid (id data) {
         ; Any of these means dash_esc is alive, watched by standalone-thread
-        (if (or (and (>= id 20) (<= id 26)) (= id 30) (= id 31))
+        (if (or (and (>= id 20) (<= id 27)) (= id 30) (= id 31))
             (setq dash-esc-last (systime))
         )
 
@@ -153,6 +153,19 @@
                     (var st (bufget-u8 data 7))
                     (def kill-sw-active (!= 0 (bitwise-and st 1)))
                     (def aux-on (!= 0 (bitwise-and st 2)))
+                    (def conf-dirty (!= 0 (bitwise-and st 4)))
+            })
+            ((= id 27) {
+                    ; One controller setting per frame, cycled by the
+                    ; controller, so the menu fills itself without asking.
+                    (var i (bufget-u8 data 0))
+                    (if (< i 16) {
+                            (bufset-f32 conf-vals (* i 4) (bufget-f32 data 1))
+                            (bufset-u8 conf-gated i (bufget-u8 data 5))
+                            (bufset-u8 conf-seen i 1)
+                            (def conf-count (bufget-u8 data 6))
+                    })
+                    (setq rx-cnt-can (+ rx-cnt-can 1))
             })
             ((= id 26) {
                     (def stats-pas-cadence (/ (bufget-u16 data 0) 10.0))

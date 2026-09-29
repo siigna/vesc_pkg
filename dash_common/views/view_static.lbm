@@ -67,6 +67,10 @@
         ((!= 0 (bitwise-and stats-pas-flags 0x08)) (list "BRAKE" colors-warn))
         ((< stats-kw -0.05) (list "REGEN" colors-green-icon))
         (aux-on (list "FAN" colors-blue-icon))
+        ; Not a hazard, so it ranks under every one, but it has to be visible
+        ; somewhere or a setting changed on the move is silently lost at the
+        ; next power cycle.
+        (conf-dirty (list "UNSVD" colors-warn))
         (t nil)
 ))
 

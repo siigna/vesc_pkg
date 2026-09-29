@@ -79,6 +79,73 @@
         (_ false)
 ))
 
+; --- Settings the display may change ----------------------------------------
+;
+; Indexed, and the index is what goes over CAN, so this list is append-only:
+; reordering it would have a display set a different parameter than it meant.
+;
+;   (id symbol gated min max)
+;
+; gated true means the parameter is not safe to change while the vehicle is
+; moving, and is only accepted while the kill switch is holding the motor. That
+; covers the calibration values: changing a torque sensor scale or the pulses
+; per revolution mid-ride would step the assist, whereas doing it with the motor
+; held is exactly how you would bench one.
+;
+; The limits are enforced here rather than trusted from the display, because a
+; display is on a bus anyone can put a frame on.
+(def conf-params '(
+        (0 pas-assist-gain       false 0.0    10.0)
+        (1 pas-current-scaling   false 0.0    1.0)
+        (2 pas-taper-start-kmh   false 0.0    100.0)
+        (3 pas-taper-end-kmh     false 0.0    100.0)
+        (4 pas-power-max-w       false 0.0    5000.0)
+        (5 l-current-min-scale   false 0.0    1.0)
+        (6 l-current-max-scale   false 0.0    1.0)
+        (7 pas-ctrl-type         true  0.0    4.0)
+        (8 pas-magnets           true  6.0    128.0)
+        (9 pas-start-timeout-s   true  0.0    2.0)
+        (10 pas-stop-timeout-s   true  0.0    2.0)
+        (11 pas-torque-zero-v    true  0.0    3.3)
+        (12 pas-torque-nm-per-v  true  0.0    300.0)
+))
+
+; Changes applied to the running configuration but not yet written to flash.
+; conf-set alone is lost on the next power cycle, which is the right default for
+; something adjusted while riding, so saving is a separate deliberate act.
+(def conf-dirty false)
+
+; Which parameter the mirror is reporting. One per frame, cycled, so a display
+; that has just connected fills its menu in about a second rather than needing a
+; request protocol.
+(def conf-mirror 0)
+
+(defun conf-param (id)
+    (let ((hit nil))
+        (progn
+            (looprange i 0 (length conf-params)
+                (if (= (ix (ix conf-params i) 0) id)
+                    (setq hit (ix conf-params i))))
+            hit)))
+
+; Applies one change, or reports why it did not.
+;   0 applied   1 unknown id   2 out of range   3 gated and not held
+(defun conf-apply (id val)
+    (let ((p (conf-param id)))
+        (if (eq p nil)
+            1
+            (let ((sym (ix p 1))
+                  (gated (ix p 2))
+                  (lo (ix p 3))
+                  (hi (ix p 4)))
+                (cond
+                    ((or (< val lo) (> val hi)) 2)
+                    ((and gated (not (and killsw-ok (get-kill-sw)))) 3)
+                    (t (progn
+                            (conf-set sym val)
+                            (def conf-dirty true)
+                            0)))))))
+
 @const-start
 
 ; Provides ext-cmd-proc
@@ -224,6 +291,44 @@
                     (setq stats-battery-ah (/ (bufget-u16 data 5) 10.0))
             })
 
+            ((= id 205) {
+                    ; byte 0 command, 1 parameter id, 2..5 value as f32.
+                    ;   0 set one parameter
+                    ;   1 write the running configuration to flash
+                    ;   2 discard: reload the stored configuration
+                    (var cmd (bufget-u8 data 0))
+                    (cond
+                        ((= cmd 0) {
+                                (var res (conf-apply (bufget-u8 data 1)
+                                                     (bufget-f32 data 2)))
+                                (if (!= res 0)
+                                    (send-msg (str-merge
+                                        "Setting rejected: "
+                                        (cond ((= res 1) "unknown")
+                                              ((= res 2) "out of range")
+                                              (t "needs the kill switch on")))))
+                        })
+                        ((= cmd 1) {
+                                ; Flash, so only on request. Refused while the
+                                ; motor could be running: conf-store fights
+                                ; anything else writing the configuration, and
+                                ; detection above all.
+                                (if (and killsw-ok (get-kill-sw))
+                                    {
+                                        (conf-store)
+                                        (def conf-dirty false)
+                                        (send-msg "Settings saved")
+                                    }
+                                    (send-msg "Turn the kill switch on to save"))
+                        })
+                        ((= cmd 2) {
+                                (conf-restore-mc)
+                                (conf-restore-app)
+                                (def conf-dirty false)
+                                (send-msg "Settings reverted")
+                        })
+                    )
+            })
             ((= id 201) {
                     (setq display-ts (systime))
                     (var drive-mode-new (bufget-u8 data 0))
@@ -901,8 +1006,22 @@
                 (var st 0)
                 (if (and killsw-ok (get-kill-sw)) (setq st (bitwise-or st 1)))
                 (if (and aux-ok (get-aux 1)) (setq st (bitwise-or st 2)))
+                (if conf-dirty (setq st (bitwise-or st 4)))
                 (bufset-u8 buf-can 7 st)
                 (can-send-sid 25 buf-can)
+
+                ; One configuration parameter per frame, cycled, so a display
+                ; fills its menu without needing to ask for anything. Sent as
+                ; the value the controller actually has, not what was asked
+                ; for, so a clamped or refused change shows up as such.
+                (bufclear buf-can)
+                (var cp (ix conf-params conf-mirror))
+                (bufset-u8 buf-can 0 (ix cp 0))
+                (bufset-f32 buf-can 1 (to-float (conf-get (ix cp 1))))
+                (bufset-u8 buf-can 5 (if (ix cp 2) 1 0))
+                (bufset-u8 buf-can 6 (length conf-params))
+                (can-send-sid 27 buf-can)
+                (setq conf-mirror (mod (+ conf-mirror 1) (length conf-params)))
 
                 ; PAS values. Only sent when the firmware provides them, so a
                 ; dash on an older controller sees nothing and says so.

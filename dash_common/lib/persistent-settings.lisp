@@ -210,7 +210,7 @@
         ; The PAS page is bit 4 and is off in the default mask, since most
         ; vehicles have no pedals. Raise the upper bound when pages are added or
         ; the new page cannot be enabled at all.
-        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x3F 0xF))
+        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x7F 0xF))
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x7FF 0xF))
 
         ; The upper bound is the highest action id in btn-do-action. Raise it
@@ -218,9 +218,9 @@
         ; quietly vanishes.
         ; Upper bound is the last action in btn-do-action. Raise it when actions
         ; are added, or the new one cannot be selected at all.
-        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 13 0))
+        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 15 0))
                 '(btn0-short btn1-short btn2-short btn3-short)))
-        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 13 0))
+        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 15 0))
                 '(btn0-long btn1-long btn2-long btn3-long)))
 
         (setq settings-esc-mode (setting-clamp (read-setting 'esc-mode) 0 2 0))

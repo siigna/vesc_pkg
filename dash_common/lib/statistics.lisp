@@ -46,6 +46,14 @@
 ; them out from anything else it receives.
 (def kill-sw-active false)
 (def aux-on false)
+; Controller settings the dash may change. Mirrored back one per frame on SID
+; 27, so these hold what the controller actually has rather than what was last
+; asked for. conf-dirty means changes are applied but not written to flash.
+(def conf-count 0)
+(def conf-vals (bufcreate (* 16 4)))
+(def conf-gated (bufcreate 16))
+(def conf-seen (bufcreate 16))
+(def conf-dirty false)
 
 ; Computed Statistics (resettable)
 (def stats-reset-now nil)

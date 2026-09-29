@@ -53,6 +53,18 @@
              (>= btn-hold-progress 1.0))
 })
 
+; conf-nudge stays here rather than in the library because it
+; reports through notify, which is part of the main loop.
+(defun conf-nudge (dir) {
+        (var row (conf-row conf-now))
+        (var v (conf-value conf-now))
+        (if (eq v nil)
+            (notify "Waiting for controller")
+            (if (conf-blocked conf-now)
+                (notify "Kill switch off")
+                (conf-send 0 (ix row 0) (+ v (* dir (ix row 3))))))
+})
+
 (defun btn-do-action (a)
     (cond
         ((= a 1) (setq page-now (mod (+ page-now 1) page-num)))
@@ -70,6 +82,12 @@
         ; there is nothing to do on the edge, and walk-requested below derives
         ; it from the button that is currently held instead.
         ((= a 13) nil)
+        ; 14 writes the running configuration to flash, 15 throws the unsaved
+        ; changes away. Both are refused by the controller unless the kill
+        ; switch is on, since writing fights anything else touching the
+        ; configuration and reverting mid-ride would change the feel abruptly.
+        ((= a 14) (conf-send 1 0 0.0))
+        ((= a 15) (conf-send 2 0 0.0))
         ((= a 8) (comm-send-event 0))
         ((= a 9) (comm-send-event 2)) ; start or stop logging on the controller
         ; Clears the session maxima, the voltage floor and both timers. Bound
@@ -81,15 +99,26 @@
 
 ; On the settings page short presses always navigate it
 (defun btn-short (idx)
-    (if (= page-now page-num)
-        (cond
-            ((= idx 0) (if (> setting-num 0)
-                          (setq setting-now (mod (+ setting-now 1) setting-num))))
-            ((= idx 1) (setting-update -))
-            ((= idx 2) (setting-update +))
-            (t (btn-do-action (ix btn-actions-short idx)))
-        )
-        (btn-do-action (ix btn-actions-short idx))
+    (cond
+        ((= page-now page-num)
+            (cond
+                ((= idx 0) (if (> setting-num 0)
+                              (setq setting-now (mod (+ setting-now 1) setting-num))))
+                ((= idx 1) (setting-update -))
+                ((= idx 2) (setting-update +))
+                (t (btn-do-action (ix btn-actions-short idx)))
+            ))
+        ; The controller settings page scrolls and adjusts the same way, but
+        ; the values live on the controller so a press sends a frame rather
+        ; than writing eeprom.
+        ((eq (ix pages page-now) page-conf)
+            (cond
+                ((= idx 0) (setq conf-now (mod (+ conf-now 1) (conf-menu-len))))
+                ((= idx 1) (conf-nudge -1.0))
+                ((= idx 2) (conf-nudge 1.0))
+                (t (btn-do-action (ix btn-actions-short idx)))
+            ))
+        (t (btn-do-action (ix btn-actions-short idx)))
 ))
 
 ; A short-lived banner over the normal views, used for things the controller

@@ -38,7 +38,9 @@
 (import "../dash_common/lib/battery.lisp" 'code-battery)
 (read-eval-program code-battery)
 
+(import "../dash_common/lib/controller-conf.lisp" 'code-controller-conf)
 (import "../dash_common/lib/communication.lisp" 'code-communication)
+(read-eval-program code-controller-conf)
 (read-eval-program code-communication)
 
 (import "../dash_common/lib/standalone.lisp" 'code-standalone)

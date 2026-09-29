@@ -399,6 +399,77 @@
         (setq page-settings-state curr-state)
 })
 
+; --- Controller settings page ------------------------------------------------
+;
+; Same shape as the display settings page, but the values live on the
+; controller: they are mirrored in over CAN and changed by sending a frame back,
+; so a row reads nil until the controller has reported it.
+
+(def conf-first-row-last -1)
+
+(defun get-page-conf-state () (append
+        (map (fn (i) (let ((v (conf-value i)))
+                         (if (eq v nil) "--" (str-from-n v (ix (conf-row i) 2)))))
+             (range (conf-menu-len)))
+        (list conf-now conf-dirty kill-sw-active)
+))
+
+(def page-conf-state (get-page-conf-state))
+
+(defun page-conf (s) {
+        (var rows (conf-menu-len))
+        (var curr-state (get-page-conf-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-conf-state curr-state))
+
+        (var first-row (cond
+                ((<= rows settings-rows-visible) 0)
+                ((< conf-now (/ settings-rows-visible 2)) 0)
+                ((>= conf-now (- rows (/ settings-rows-visible 2)))
+                    (- rows settings-rows-visible))
+                (t (- conf-now (/ settings-rows-visible 2)))
+        ))
+
+        ; The labels move when the list scrolls, and a gated row changes
+        ; appearance when the kill switch does, so both force a full redraw.
+        (if (or s (not-eq first-row conf-first-row-last)
+                (ix update-state (+ rows 2))) {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq conf-first-row-last first-row)
+
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 (- page-w 224) row-h))
+                ))
+
+                (page-clear)
+
+                (var lblimg (img-buffer dm-pool 'indexed4 210 row-h))
+                (looprange i 0 (imin settings-rows-visible rows) {
+                        (var r (+ first-row i))
+                        ; A gated row the kill switch is not holding is shown
+                        ; dim, so it is clear before pressing that it will be
+                        ; refused rather than after.
+                        (txt-right lblimg (+ page-x 4) (+ page-y (* i row-h))
+                            (str-merge (ix (conf-row r) 1)
+                                       (if (conf-blocked r) " *" "")))
+                })
+        })
+
+        (var valimg (assoc page-resources 'val-img))
+        (looprange i 0 (imin settings-rows-visible rows) {
+                (var r (+ first-row i))
+                (if (or (ix update-state r) (ix update-state rows))
+                    (txt-left valimg (+ page-x 224) (+ page-y (* i row-h))
+                        (ix curr-state r)
+                        (cond
+                            ((conf-blocked r) (colors-fade-aa 0.45))
+                            ((= (ix curr-state rows) r) colors-text-sel-aa)
+                            (t colors-text-aa)))
+                )
+        })
+
+        (setq page-conf-state curr-state)
+})
+
 ; --- PAS page: what the rider is contributing and what the motor adds -------
 
 ; Rounded so that the page only redraws when a displayed digit changes, rather
@@ -567,7 +638,8 @@
 
 ; Index order is stored in settings-page-mask, so only append here.
 (def page-catalog
-    (list page-live page-trip page-session page-batt page-pas page-chart))
+    (list page-live page-trip page-session page-batt page-pas page-chart
+          page-conf))
 
 (def pages (append page-catalog (list page-settings)))
 

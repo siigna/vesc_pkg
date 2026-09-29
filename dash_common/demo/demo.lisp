@@ -19,6 +19,7 @@
 (import (str-merge C "lib/statistics.lisp") 'c-stats)
 (import (str-merge C "lib/draw-utils.lisp") 'c-draw)
 (import (str-merge C "lib/battery.lisp") 'c-batt)
+(import (str-merge C "lib/controller-conf.lisp") 'c-cconf)
 (import (str-merge B "lib/input.lisp") 'c-input)
 (import (str-merge C "views/view_static.lbm") 'c-static)
 (import (str-merge C "views/view_pages.lbm") 'c-pages)
@@ -26,7 +27,8 @@
 (read-eval-program c-config) (read-eval-program c-vehicle)
 (read-eval-program c-colors) (read-eval-program c-user)
 (read-eval-program c-persist) (read-eval-program c-stats)
-(read-eval-program c-draw) (read-eval-program c-batt) (read-eval-program c-input)
+(read-eval-program c-draw) (read-eval-program c-batt)
+(read-eval-program c-cconf) (read-eval-program c-input)
 (read-eval-program c-static) (read-eval-program c-pages)
 
 (import (str-merge B "font/F_SPEED") 'font-speed)
@@ -42,7 +44,7 @@
 
 ; Every page, so the PAS one is reachable. Before the strip is drawn, since the
 ; strip shows one dot per page.
-(setq settings-page-mask 0x3F)
+(setq settings-page-mask 0x7F)
 (settings-apply-pages)
 
 ; Chart the speed, which is what makes the ride legible: the climb, the brake,
@@ -69,6 +71,15 @@
 (def stats-pas-output 0.0) (def stats-pas-flags 0)
 (def kill-sw-active false) (def aux-on false) (def stats-fault-code 0)
 
+; Controller settings, as if the mirror had arrived.
+(def conf-count 13)
+(looprange i 0 13 {
+        (bufset-u8 conf-seen i 1)
+        (bufset-f32 conf-vals (* i 4)
+            (ix (list 2.0 0.35 22.0 25.0 250.0 1.0 1.0 4.0 18.0 0.30 0.25 1.5 70.0) i))
+        (bufset-u8 conf-gated i (if (ix (conf-row i) 4) 1 0))
+})
+
 (defun lerp (a b f) (+ a (* (- b a) (if (< f 0.0) 0.0 (if (> f 1.0) 1.0 f)))))
 
 ; The ride, as phases over the frame index. Roughly 10 fps.
@@ -82,8 +93,9 @@
 ; 125-135  the cooling fan comes on
 ; 135-142  the kill switch, which outranks everything else
 ; 142-160  the rolling chart, which is fed by the ride above
-; 160-228  pages: trip, session, battery, back to live
-(def demo-frames 228)
+; 160-178  controller settings, with unsaved changes pending
+; 178-246  pages: trip, session, battery, back to live
+(def demo-frames 246)
 
 (defun demo-state (i) {
         (var f (to-float i))
@@ -161,6 +173,11 @@
         ; Conditions the strip reports, in the order the slot ranks them. Each
         ; gets a window of its own so a still of it exists.
         (setq aux-on (and (> f 125.0) (< f 142.0)))
+        ; Unsaved changes, so the strip shows it and the settings page is worth
+        ; looking at. The kill switch window above is also what unlocks the
+        ; gated rows, which is the point of showing them together.
+        (setq conf-dirty (> f 160.0))
+        (setq conf-now (if (< f 170.0) 0 8))
         (setq kill-sw-active (and (> f 135.0) (< f 142.0)))
 
         ; The rest of the vehicle, driven off speed and assist. Coasting with
@@ -197,9 +214,10 @@
     (cond
         ((< i 142) 4)       ; PAS, which is where the strip conditions play out
         ((< i 160) 5)       ; Chart, showing the ride that just happened
-        ((< i 178) 1)       ; Trip
-        ((< i 196) 2)       ; Session
-        ((< i 214) 3)       ; Battery
+        ((< i 178) 6)       ; Controller settings
+        ((< i 196) 1)       ; Trip
+        ((< i 214) 2)       ; Session
+        ((< i 232) 3)       ; Battery
         (t 0)               ; Live
 ))
 

@@ -59,6 +59,7 @@ these are all momentary. It shows whichever is most important, worst first:
 | `BRAKE` | amber | the brake input is applied |
 | `REGEN` | green | the pack is taking current back |
 | `FAN` | blue | the auxiliary output is on |
+| `UNSVD` | amber | controller settings changed but not written to flash |
 
 `KILL` and `FAN` come from the controller in byte 7 of SID 25, since the display
 cannot work them out for itself; they need ESC firmware 7.02 for `get-kill-sw`
@@ -66,6 +67,38 @@ and `get-aux`, and `dash_esc` probes for both. `BRAKE` comes from the PAS status
 flags, so it needs a PAS brake source configured — there is no general "brake
 applied" signal on a VESC to read otherwise. `REGEN` is derived from pack power
 going negative, so it needs nothing extra.
+
+## Controller settings
+
+A second settings page edits settings that live on the **controller**, as
+against the display settings the first one edits. Values are mirrored in over
+CAN, one per frame on SID 27, so the page fills itself in about a second without
+asking for anything, and shows what the controller actually has rather than what
+was last asked for — a clamped or refused change shows up as such.
+
+Changes go out on SID 205 and are applied with `conf-set`, which is **RAM only**.
+That is deliberate: a setting changed while riding should not commit itself to
+flash. The strip shows `UNSVD` while there are applied-but-unwritten changes,
+and button actions 14 and 15 save and revert. Both are refused by the controller
+unless the kill switch is on, because writing fights anything else touching the
+configuration — detection above all — and reverting mid-ride would change the
+feel abruptly.
+
+Rows fall into two tiers. The plain ones are safe to change while moving: the
+assist gain, PAS current, taper speeds, power cap and the current scales. The
+**starred** ones are calibration values that would step the assist mid-ride, so
+the controller only accepts them while the kill switch holds the motor. The dash
+shows those dim and marked when the switch is off, so it is clear before
+pressing rather than after.
+
+The ids are what travel over CAN, so `conf-menu` here and `conf-params` in
+`dash_esc` must stay in the same order, and both are append-only. The
+controller enforces its own limits rather than trusting the display, since a
+display is on a bus anyone can put a frame on: the table here is for
+presentation.
+
+Needs ESC firmware 7.02 for the `conf-set` symbols, `get-kill-sw` and
+`conf-store`.
 
 ## Rolling chart
 

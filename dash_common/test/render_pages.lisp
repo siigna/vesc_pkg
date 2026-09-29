@@ -15,6 +15,7 @@
 (import (str-merge C "lib/statistics.lisp") 'c-stats)
 (import (str-merge C "lib/draw-utils.lisp") 'c-draw)
 (import (str-merge C "lib/battery.lisp") 'c-batt)
+(import (str-merge C "lib/controller-conf.lisp") 'c-cconf)
 (import (str-merge B "lib/input.lisp") 'c-input)
 (import (str-merge C "views/view_static.lbm") 'c-static)
 (import (str-merge C "views/view_pages.lbm") 'c-pages)
@@ -22,7 +23,8 @@
 (read-eval-program c-config) (read-eval-program c-vehicle)
 (read-eval-program c-colors) (read-eval-program c-user)
 (read-eval-program c-persist) (read-eval-program c-stats)
-(read-eval-program c-draw) (read-eval-program c-batt) (read-eval-program c-input)
+(read-eval-program c-draw) (read-eval-program c-batt)
+(read-eval-program c-cconf) (read-eval-program c-input)
 (read-eval-program c-static) (read-eval-program c-pages)
 
 (import (str-merge B "font/F_SPEED") 'font-speed)
@@ -69,7 +71,7 @@
 ; happen before the static strip is drawn: the strip shows one dot per page, so
 ; changing the page count afterwards would alter the strip part way through the
 ; run and every page captured after that point would differ.
-(setq settings-page-mask 0x3F)
+(setq settings-page-mask 0x7F)
 (settings-apply-pages)
 
 ; The chart plots whatever has been sampled, so the harness fills the ring
@@ -82,6 +84,20 @@
     (chart-push (cond ((< i 30) (* 0.08 i))
                       ((< i 60) 2.4)
                       (t (- 2.4 (* 0.05 (- i 60)))))))
+
+; Controller settings, as if the mirror had arrived. Parked on a gated row with
+; the kill switch off, so the golden covers the case that actually has an
+; appearance of its own: gated rows read dim and marked while the motor is not
+; being held, which is what says the press would be refused before making it.
+(def conf-count 13)
+(looprange i 0 13 {
+        (bufset-u8 conf-seen i 1)
+        (bufset-f32 conf-vals (* i 4)
+            (ix (list 2.0 0.35 22.0 25.0 250.0 1.0 1.0 4.0 18.0 0.30 0.25 1.5 70.0) i))
+        (bufset-u8 conf-gated i (if (ix (conf-row i) 4) 1 0))
+})
+(setq conf-now 8)
+(def kill-sw-active false)
 
 ; Plausible PAS values, so the page shows something rather than zeros.
 (def stats-pas-rx true)
