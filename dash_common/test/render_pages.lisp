@@ -160,4 +160,58 @@
 (sleep 0.3)
 (save-active-img "out/BOARD_theme_light.png")
 
+; Back to Dark, then one live page with a different colour rule in each cell,
+; so every branch of slot-colors is drawn: ramp, heat, low-warn and sign. The
+; ranges are picked so the seeded values land in different parts of each,
+; otherwise three of the four would come out the same green.
+(settings-set 'theme 0)
+(looprange i 0 4 {
+        (settings-set (ix '(slot-mode-0 slot-mode-1 slot-mode-2 slot-mode-3) i) (+ i 1))
+        (settings-set (ix '(slot-min-0 slot-min-1 slot-min-2 slot-min-3) i) 0.0)
+        (settings-set (ix '(slot-max-0 slot-max-1 slot-max-2 slot-max-3) i)
+            (ix '(40.0 80.0 100.0 50.0) i))
+})
+; Cell 3 is the sign rule, so point it at power, which the seed has negative.
+(settings-set 'slot-3 4)
+(def stats-kw -1.8)
+(settings-apply-visual)
+(view-static-frame)
+(sleep 0.3)
+(page-live true)
+(page-live false)
+(sleep 0.3)
+(save-active-img "out/BOARD_slot_rules.png")
+
+; The heat table has to be sixteen distinct ramps, not one colour repeated.
+(print (list 'BOARD 'heat-lo (ix (colors-heat-ramp 0.0) 3)
+                    'heat-mid (ix (colors-heat-ramp 0.5) 3)
+                    'heat-hi (ix (colors-heat-ramp 1.0) 3)))
+
+; What smoothing costs. It glides a value over several frames instead of
+; jumping, and the live page redraws a cell whenever its text changes, so it
+; buys motion with redraws. This measures the whole page frame -- state read,
+; dirty check and the disp-render of whatever changed -- with a value that
+; moves every frame, which is the worst case rather than a typical one.
+(settings-set 'slot-0 4)
+(looprange i 0 4
+    (settings-set (ix '(slot-mode-0 slot-mode-1 slot-mode-2 slot-mode-3) i) 0))
+(settings-apply-visual)
+
+(defun bench-live (n) {
+        (page-live true)
+        (var t0 (systime))
+        (looprange i 0 n {
+                (def stats-kw (+ 1.0 (* 0.37 (mod i 17))))
+                (page-live false)
+        })
+        (/ (* 1000.0 (secs-since t0)) n)
+})
+
+(settings-set 'smooth 0.0)
+(def ms-off (bench-live 120))
+(settings-set 'smooth 0.3)
+(def ms-on (bench-live 120))
+(print (list 'BOARD 'live-ms-per-frame (round-x ms-off 0.01) 'smoothing-off
+                    (round-x ms-on 0.01) 'smoothing-on))
+
 (print (list 'BOARD 'pages (length pages) 'ok))

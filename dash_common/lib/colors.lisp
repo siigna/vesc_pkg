@@ -26,6 +26,8 @@
 (def colors-purple-icon nil)
 (def colors-text-aa nil)
 (def colors-slots nil)
+(def colors-heat nil)
+(def colors-accent-aa nil)
 (def colors-warn nil)
 (def colors-crit nil)
 (def colors-ok nil)
@@ -100,8 +102,44 @@
         (setq color-crit (ix row 6))
 })
 
+; h 0..360, s and v 0..1. color-make takes floats, so the usual byte packing
+; is not needed.
+(defun colors-hsv (h s v) {
+        (var hh (/ (to-float (mod (+ (to-i h) 360) 360)) 60.0))
+        (var c (* v s))
+        (var sec (to-i hh))
+        (var x (* c (- 1.0 (abs (- (- hh (* 2 (to-i (/ hh 2)))) 1.0)))))
+        (var m (- v c))
+        (var rgb (cond
+                ((= sec 0) (list c x 0.0)) ((= sec 1) (list x c 0.0))
+                ((= sec 2) (list 0.0 c x)) ((= sec 3) (list 0.0 x c))
+                ((= sec 4) (list x 0.0 c)) (t (list c 0.0 x))))
+        (color-make (+ (ix rgb 0) m) (+ (ix rgb 1) m) (+ (ix rgb 2) m))
+})
+
+; Teal at 0 through green, yellow and orange to red at 1, eased with a 1.6
+; power so it stays cool over most of the range and only goes hot near the top.
+; From the hue ramp in raskol's dashboard.
+; Clamped here rather than with clamp01: colors-build runs as this file loads,
+; which is before draw-utils has been read.
+(defun colors-clamp01 (v) (if (< v 0.0) 0.0 (if (> v 1.0) 1.0 v)))
+
+(defun colors-heat-at (f)
+    (colors-hsv (- 165 (* 170 (pow (colors-clamp01 f) 1.6))) 0.81 0.89))
+
+; Sixteen prebuilt ramps rather than a colour computed per frame. A continuous
+; rule would otherwise allocate a fresh four-entry palette on every redraw of
+; every cell, and the live page redraws a cell whenever its text changes.
+(def colors-heat-steps 16)
+
+(defun colors-heat-ramp (f)
+    (ix colors-heat (to-i (* (colors-clamp01 f) (- colors-heat-steps 1)))))
+
 (defun colors-build () {
         (setq colors-theme-2 (colors-make-aa color-bg color-accent 2))
+        ; The accent as a four-entry ramp. colors-theme-2 is the indexed2 one
+        ; and cannot colour text, which is drawn indexed4.
+        (setq colors-accent-aa (colors-make-aa color-bg color-accent 4))
         (setq colors-speed
             (list color-bg (colors-shade color-accent 0.55) color-accent color-text))
         (setq colors-charging
@@ -130,6 +168,9 @@
         (setq colors-warn-2 (colors-make-aa color-bg color-warn 2))
         (setq colors-crit-2 (colors-make-aa color-bg color-crit 2))
         (setq colors-slots (map (fn (c) (colors-make-aa color-bg c 4)) settings-slot-cols))
+        (setq colors-heat (map (fn (i) (colors-make-aa color-bg
+                        (colors-heat-at (/ (to-float i) (- colors-heat-steps 1))) 4))
+                (range colors-heat-steps)))
         (setq colors-text-sel-aa (colors-make-aa color-bg 0x00FF00 4))
         (setq colors-white-aa (colors-make-aa color-bg color-text 4))
 })

@@ -12,6 +12,10 @@
 
 ; Rotating pages in the button-0 cycle. Settings page sits at page-num.
 (def settings-page-mask 0xF)
+; How far a live cell's value moves towards the real one each redraw. 0 is off,
+; which is the old behaviour of jumping straight to it.
+(def settings-smooth 0.0)
+
 (def settings-chart-src 4)
 (def settings-chart-secs 10)
 
@@ -133,6 +137,7 @@
     (chart-secs . (80 i))
     (theme . (81 i))
     (col-bg . (82 i))
+    (smooth . (83 f))
 ))
 
 (defun print-settings ()
@@ -182,6 +187,8 @@
         ; formats numbers, and here that is tolerable: the whole screen
         ; recolours as the number changes, so the value names itself.
         (theme        "Theme"       "%d"       1     0    4)
+        ; Bit 12.
+        (smooth       "Smoothing"   "%.1f"     0.1   0.0  0.9)
 ))
 
 (def setting-catalog-max 6)
@@ -219,7 +226,7 @@
         (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x7F 0xF))
         ; One bit per setting-catalog row. Raise the bound when the catalog
         ; grows, or the new row cannot be enabled at all.
-        (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0xFFF 0xF))
+        (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x1FFF 0xF))
 
         ; The upper bound is the highest action id in btn-do-action. Raise it
         ; when an action is added, or the new id clamps to 0 and the binding
@@ -253,6 +260,10 @@
         (setq settings-chart-src (setting-clamp (read-setting 'chart-src) 0 29 4))
         (setq settings-chart-secs (setting-clamp (read-setting 'chart-secs) 5 10 10))
 
+        ; Off by default: it raises the redraw rate while a value moves, and
+        ; the S3 is the board with the least headroom for that.
+        (setq settings-smooth (setting-clamp (read-setting 'smooth) 0.0 0.9 0.0))
+
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
         ; Same fallback as the three main colours: an unpicked cell takes the
@@ -260,7 +271,10 @@
         ; background.
         (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF (theme-text)))
                 '(slot-col-0 slot-col-1 slot-col-2 slot-col-3)))
-        (setq settings-slot-modes (map (fn (n) (setting-clamp (read-setting n) 0 1 0))
+        ; 0 fixed, 1 ramp, 2 heat, 3 low-warn, 4 sign. See slot-colors. Raise
+        ; the bound when a rule is added, or it clamps to fixed and the choice
+        ; quietly vanishes.
+        (setq settings-slot-modes (map (fn (n) (setting-clamp (read-setting n) 0 4 0))
                 '(slot-mode-0 slot-mode-1 slot-mode-2 slot-mode-3)))
         (setq settings-slot-mins (map (fn (n) (setting-clamp (read-setting n) -1000.0 10000.0 0.0))
                 '(slot-min-0 slot-min-1 slot-min-2 slot-min-3)))
@@ -411,7 +425,8 @@
             (str-from-n settings-theme "%d ")
             (str-from-n (read-setting 'col-bg) "%d ")
             (str-from-n settings-chart-src "%d ")
-            (str-from-n settings-chart-secs "%d")
+            (str-from-n settings-chart-secs "%d ")
+            (str-from-n settings-smooth "%.2f")
 )))
 
 (defun restore-settings ()
@@ -463,6 +478,7 @@
         (write-setting 'splash-en 1)
 
         (write-setting 'theme 0)
+        (write-setting 'smooth 0.0)
 
         ; -1 is "no colour picked", which is what makes the three fall back to
         ; whatever the theme says. Writing an actual colour here would pin them

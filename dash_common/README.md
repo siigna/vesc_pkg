@@ -152,6 +152,74 @@ raise `settings-redraw` for it and the worker calls `settings-apply-visual`.
 repeats while a button is held, and repainting the panel per step would make it
 unusable.
 
+## Live cell colours
+
+Each of the four live cells has a colour rule, `slot-mode-N`. Mode order is
+stored in eeprom, so **only append**.
+
+| mode | what it does |
+|---|---|
+| `Fixed` | the cell's own colour, which is the only mode that ignores the range |
+| `Ramp` | green, amber from 0.6 of the range, red from 0.85 |
+| `Heat` | teal through green, yellow and orange to red, continuous |
+| `Low is bad` | the ramp read the other way: red at the bottom. For a state of charge or a pack voltage |
+| `Green when negative` | accent while positive, green while negative, so regen on power or current reads at a glance |
+
+Every mode but `Fixed` works off where the value sits in that cell's
+min..max, so the range has to be set for the colour to mean anything.
+
+`Heat` is a hue ramp, eased with a 1.6 power so it stays cool over most of the
+range and only goes hot near the top, from raskol's dashboard. It is **sixteen
+prebuilt ramps**, not a colour computed per frame: a continuous rule would
+otherwise allocate a fresh four-entry palette on every redraw of every cell,
+and a cell redraws whenever its text changes. `colors-hsv` exists for it
+because `color-make` takes floats, so no byte packing is needed.
+
+`colors.lisp` clamps with its own `colors-clamp01` rather than `clamp01`,
+because `colors-build` runs as that file loads, which is before `draw-utils`
+has been read.
+
+## Value smoothing
+
+Off by default. `smooth` is how far a live cell's value moves towards the real
+one on each redraw; 0 is the old behaviour of jumping straight to it, and 0.3
+is a good starting point. `smooth-step` in `lib/statistics.lisp`, after
+`ui-smooth` in raskol's dashboard:
+
+```
+n = sv + k(v - sv),  snapped to v when |v - n| < max(0.05, 0.002(hi - lo))
+```
+
+The **snap** is the part that makes this usable for a number rather than only
+for a bar: without it the last digit would crawl towards the value and never
+settle. The threshold scales with the cell's range, with a 0.05 floor for a
+cell that has none set.
+
+`k` is per refresh rather than per second, so the glide is as fast as the page
+redraws. The alternative needs a timestamp per value and a division per frame,
+for a difference nobody can see on a display that redraws at a steady rate.
+
+Both the number and its colour go through `slot-shown`, so a rule cannot
+disagree with the number it is colouring. A timer slot is never smoothed: it
+only counts up, so there is nothing to glide towards, and a smoothed clock
+would read the wrong time. Entering the page snaps rather than gliding up from
+a value that could be minutes stale.
+
+**What it costs**, from the bench in `test/render_pages.lisp`, which drives a
+value that moves every frame -- the worst case, not a typical one:
+
+| board | smoothing off | on at 0.3 |
+|---|---|---|
+| s3 (480x480) | 0.15 ms/frame | 0.16 |
+| p4 (800x480) | 0.17 ms/frame | 0.20 |
+
+Those are host numbers, so read the ratio and not the absolute figures. The
+arithmetic itself is nearly free. What smoothing actually buys motion with is
+**redraws**: the dirty check is on the formatted string, so a gliding value
+redraws its cell every frame instead of once, and on real hardware that is a
+panel write rather than a memory write. That is why it is off by default and
+why the setting is a fraction rather than a switch.
+
 ## Rolling chart
 
 There is a chart page showing a rolling window of one live value, autoscaled to

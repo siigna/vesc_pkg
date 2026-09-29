@@ -63,10 +63,17 @@ if ! grep -q 'defun live-cell-hit' build/common/live_geom.lisp; then
     exit 1
 fi
 
+# smooth-step, pulled out of the real statistics.lisp for the same reason.
+awk '/^\(defun smooth-step /,/^\}\)/' ../lib/statistics.lisp > build/common/smooth_fn.lisp
+if [ ! -s build/common/smooth_fn.lisp ]; then
+    echo "could not extract smooth-step from statistics.lisp" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test walk_test hit_test; do
+for unit in battery_test walk_test hit_test smooth_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

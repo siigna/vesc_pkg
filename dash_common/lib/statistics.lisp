@@ -311,6 +311,50 @@
 
 (defun slot-label (i) (ix (ix slot-catalog i) 0))
 
+; --- Value smoothing -------------------------------------------------------
+;
+; A displayed value moves a fraction k of the way towards the real one each
+; refresh instead of jumping, and snaps the last bit so it lands exactly on the
+; value rather than crawling towards it forever. The snap is what makes this
+; usable for a number rather than only a bar: without it the last digit would
+; never settle. From ui-smooth in raskol's dashboard.
+;
+; k is per refresh, not per second, so the glide is as fast as the page redraws.
+; That is deliberate -- the alternative needs a timestamp per value and a
+; division per frame, for a difference nobody can see on a display that redraws
+; at a steady rate anyway.
+;
+; nil sv means nothing has been shown yet, which is the first frame and every
+; return to the page: those snap rather than gliding up from a stale value.
+(defun smooth-step (sv v k lo hi) {
+        (if (or (eq sv nil) (<= k 0.0) (>= k 1.0)) v {
+                (var n (+ sv (* k (- v sv))))
+                ; Within a fifth of a percent of the range, or 0.05 for a slot
+                ; with no range set, is close enough to land on.
+                (var span (- hi lo))
+                (var eps (if (> (* 0.002 span) 0.05) (* 0.002 span) 0.05))
+                (if (< (abs (- v n)) eps) v n)
+        })
+})
+
+; Smoothed value per live cell. nil until the cell has been drawn once.
+(def stats-slot-smooth (list nil nil nil nil))
+
+(defun slot-smooth-reset () (setq stats-slot-smooth (list nil nil nil nil)))
+
+; What cell i should display: the real value with smoothing off, the glided one
+; with it on. Both the number and its colour go through here, so a rule cannot
+; disagree with the number it is colouring.
+(defun slot-shown (i) {
+        (var v (to-float (slot-value (ix settings-slots i))))
+        (if (<= settings-smooth 0.0) v {
+                (var n (smooth-step (ix stats-slot-smooth i) v settings-smooth
+                            (ix settings-slot-mins i) (ix settings-slot-maxs i)))
+                (setix stats-slot-smooth i n)
+                n
+        })
+})
+
 ; The two timers are drawn as h:mm:ss rather than a number of seconds.
 (defun slot-is-time (i) (or (= i 20) (= i 21)))
 

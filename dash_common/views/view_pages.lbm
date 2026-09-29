@@ -94,11 +94,13 @@
 ; --- Live page: four configurable slots, 2x2 ------------------------------
 
 ; A slot is a number unless it is one of the timers, which read as a duration.
+; A timer is never smoothed: it only counts up, so there is nothing to glide
+; towards, and a smoothed clock would read the wrong time.
 (defun slot-str (i) {
         (var src (ix settings-slots i))
         (if (slot-is-time src)
             (slot-time-str (slot-value src))
-            (str-from-n (to-float (slot-value src)) (slot-fmt src)))
+            (str-from-n (slot-shown i) (slot-fmt src)))
 })
 
 (defun get-page-live-state () (list
@@ -110,17 +112,41 @@
 ; (cell progress) of the hold last drawn, so the cell redraws as it fills.
 (def page-live-hold (list nil 0.0))
 
-; Fixed colour, or a green to red ramp across the slot range
+; How a live cell is coloured. Mode 0 is its own fixed colour; the rest are
+; rules over where the value sits in the cell's min..max range. Mode order is
+; stored in eeprom, so only append.
+;
+;   0 fixed     the slot colour
+;   1 ramp      green, then amber from 0.6, then red from 0.85
+;   2 heat      teal to red, continuous, from a prebuilt 16-step table
+;   3 low-warn  the ramp read the other way: red at the bottom of the range,
+;               which is what a state of charge or a pack voltage wants
+;   4 sign      accent while the value is positive, green while it is negative,
+;               so regen on power or current reads at a glance
 (defun slot-colors (i) {
-        (if (= (ix settings-slot-modes i) 0) (ix colors-slots i) {
+        (var mode (ix settings-slot-modes i))
+        (if (= mode 0) (ix colors-slots i) {
                 (var lo (ix settings-slot-mins i))
                 (var hi (ix settings-slot-maxs i))
-                (var v (slot-value (ix settings-slots i)))
+                ; The shown value, not the raw one, so the colour cannot
+                ; disagree with the number beside it while it is gliding.
+                ; slot-str runs first each frame, so this reads the step it
+                ; already took rather than taking another.
+                (var v (ix stats-slot-smooth i))
+                (if (or (eq v nil) (<= settings-smooth 0.0))
+                    (setq v (to-float (slot-value (ix settings-slots i)))))
                 (var f (if (<= hi lo) 0.0 (/ (- v lo) (- hi lo))))
                 (cond
-                    ((> f 0.85) colors-crit)
-                    ((> f 0.6) colors-warn)
-                    (t colors-ok)
+                    ((= mode 2) (colors-heat-ramp f))
+                    ((= mode 3) (cond
+                            ((< f 0.15) colors-crit)
+                            ((< f 0.4) colors-warn)
+                            (t colors-ok)))
+                    ((= mode 4) (if (< v 0.0) colors-ok colors-accent-aa))
+                    (t (cond
+                            ((> f 0.85) colors-crit)
+                            ((> f 0.6) colors-warn)
+                            (t colors-ok)))
                 )
         })
 })
@@ -171,6 +197,10 @@
     (colors-make-aa color-bg (color-mix color-text color-accent (clamp01 f)) 4))
 
 (defun page-live (s) {
+        ; Entering the page snaps rather than gliding up from whatever was
+        ; shown when it was last open, which could be minutes stale.
+        (if s (slot-smooth-reset))
+
         (var curr-state (get-page-live-state))
         (var update-state (zipwith (fn (x y) (not-eq x y)) page-live-state curr-state))
 

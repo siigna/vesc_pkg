@@ -68,6 +68,12 @@ Item {
 
     property var themeNames: ["Dark", "Amber", "Green", "Night", "Light"]
 
+    // Must stay in step with slot-colors in views/view_pages.lbm.
+    property var slotModeNames: [
+        "Fixed", "Ramp green to red", "Heat teal to red",
+        "Low is bad", "Green when negative"
+    ]
+
     function colorIndexOf(v) {
         for (var i = 0; i < colorValues.length; i++) {
             if (colorValues[i] === v) {
@@ -236,11 +242,13 @@ Item {
             bgBox.currentIndex = colorIndexOf(parseInt(v[48]))
             chartSrcBox.currentIndex = parseInt(v[49])
             chartSecsBox.currentIndex = parseInt(v[50]) === 5 ? 0 : 1
+            // Stored as a fraction, edited in tenths.
+            smoothBox.value = Math.round(parseFloat(v[51]) * 10)
             for (var sl = 0; sl < 4; sl++) {
                 var it = slotRepeater.itemAt(sl)
                 it.source = parseInt(v[25 + sl])
                 it.slotColor = colorIndexOf(parseInt(v[29 + sl]))
-                it.ramp = parseInt(v[33 + sl]) === 1
+                    it.ramp = parseInt(v[33 + sl])
                 it.rangeLo = parseInt(v[37 + sl])
                 it.rangeHi = parseInt(v[41 + sl])
             }
@@ -501,6 +509,28 @@ Item {
                         columns: 2
 
                         Text {
+                            text: "Smoothing"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: smoothBox
+                            from: 0
+                            to: 9
+                            stepSize: 1
+                            property real realValue: value / 10.0
+                            textFromValue: function(v) {
+                                return v === 0 ? "Off" : (v / 10.0).toFixed(1)
+                            }
+                            valueFromText: function(t) {
+                                return t === "Off" ? 0 : Math.round(parseFloat(t) * 10)
+                            }
+                            onValueModified: {
+                                if (!loading) setSetting("smooth", value / 10.0)
+                            }
+                        }
+
+                        Text {
                             text: "Theme"
                             color: Utility.getAppHexColor("lightText")
                         }
@@ -648,8 +678,12 @@ Item {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         color: Utility.getAppHexColor("lightText")
-                        text: "Four readings, two by two. Colour by value ramps " +
-                              "green to amber to red across the range."
+                        text: "Four readings, two by two. Every colour rule but " +
+                              "Fixed works off where the value sits in the range " +
+                              "below it, so the range has to be set for the " +
+                              "colour to mean anything. Low is bad reads the " +
+                              "ramp the other way, for a state of charge; Green " +
+                              "when negative marks regen on power or current."
                         font.pointSize: 8
                     }
 
@@ -661,7 +695,7 @@ Item {
                             property int slotIndex: index
                             property alias source: slotBox.currentIndex
                             property alias slotColor: slotColBox.currentIndex
-                            property alias ramp: rampBox.checked
+                            property alias ramp: rampBox.currentIndex
                             property alias rangeLo: loBox.value
                             property alias rangeHi: hiBox.value
                             Layout.fillWidth: true
@@ -702,13 +736,23 @@ Item {
                                 }
                             }
 
-                            CheckBox {
-                                id: rampBox
-                                text: "Colour by value"
-                                onClicked: {
-                                    if (!loading) {
-                                        setSetting("slot-mode-" + slotIndex,
-                                                   checked ? 1 : 0)
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: "Colour"
+                                    color: Utility.getAppHexColor("lightText")
+                                }
+
+                                ComboBox {
+                                    id: rampBox
+                                    Layout.fillWidth: true
+                                    model: slotModeNames
+                                    onActivated: {
+                                        if (!loading) {
+                                            setSetting("slot-mode-" + slotIndex,
+                                                       currentIndex)
+                                        }
                                     }
                                 }
                             }
