@@ -29,6 +29,13 @@ If the stored motor parameters cannot describe a real motor, the profile is susp
 
 ## Changelog
 
+**Version 2.5 (2026-09-29)**
+
+- Sends PAS telemetry: cadence, crank torque, rider power and assist power on
+  SID 26, with the status flags and output in the two spare bytes of SID 25.
+  Probed once at startup, since the getters beyond the pedal RPM need ESC
+  firmware 7.02, and nothing is sent when they are absent.
+
 **Version 2.4 (2026-09-13)**
 * Drive profile is written when it changes rather than ten times a second, so it no longer fights anything else writing configuration
 * Configured limits are restored when no display is present, so a motor can be detected without a power cycle first
