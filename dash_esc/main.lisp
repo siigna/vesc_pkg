@@ -393,6 +393,21 @@
 ;
 ; All entries except value-function are optional and
 ; default values will be used if they are left out.
+; Logged separately from loglist-local because the getters need firmware 7.02,
+; so on an older controller these are left out rather than failing the whole
+; log. Measured power is included even though it is close to Input Voltage
+; times Current In, because it is what the closed loop actually regulates
+; against and that is the pair worth plotting when tuning the power gain.
+(def loglist-pas '(
+        ("pas_cadence" "rpm" "Cadence" 1        (app-pas-get-rpm))
+        ("pas_torque" "Nm" "Crank Torque" 1     (app-pas-get-torque))
+        ("pas_rider_w" "W" "Rider Power" 0      (app-pas-get-rider-power))
+        ("pas_assist_w" "W" "Assist Target" 0   (app-pas-get-assist-power))
+        ("pas_measured_w" "W" "Assist Measured" 0 (app-pas-get-measured-power))
+        ("pas_output" "" "PAS Output" 3         (app-pas-get-output))
+        ("pas_flags" "" "PAS Flags" 0           (app-pas-get-flags))
+))
+
 (def loglist-local '(
         ("Input Voltage" "V"            (get-vin))
         ("Current" "A"                  (get-current 1))
@@ -552,6 +567,7 @@
         (def loglist (merge-lists
                 (list
                     (if log-local loglist-local ())
+                    (if (and log-local pas-ok) loglist-pas ())
                     (if log-can (canlist-create) ())
                     (if log-bms (bmslist-create) ())
         )))
