@@ -75,11 +75,24 @@ The controller side needs its PAS walk assist source set to Script, and `dash_es
 2.5 or newer. The other dashes in this family send zero in that byte, so they
 simply never request it.
 
-The status word reports the worst active condition, in this order: `no data`,
-`no pins`, `bad ch`, `bad brk`, `bad sens`, `no trq hw`, `clipped`, `brake`,
-`sp limit`, `ok`. Those map to the bits `app-pas-get-flags` returns; `clipped`
-in particular means the torque sensor is reading at or above the ADC reference,
-so torque above that point is not being measured at all.
+The status word reports the worst active condition, worst first:
+
+| word | meaning |
+|---|---|
+| `no rx` | no PAS data from the controller at all |
+| `nopin` | the pedal sensor pins could not be claimed |
+| `trqch` · `brkch` · `wlkch` | that ADC channel does not exist on this hardware |
+| `sens` | the configured sensor type is not supported |
+| `notrq` | hardware torque source selected on a board without one |
+| `clip` | the torque sensor is at or above the ADC reference, so torque above that point is not being measured at all |
+| `brake` | the brake is applied |
+| `walk` | walk assist is driving |
+| `splim` | assist is being cut back by the road speed taper |
+| `ok` | nothing to report |
+
+Five characters each, because the grid sizes the value column for a number and a
+four column panel cuts anything longer off mid-word. The `pas_status` terminal
+command on the controller spells them out in full.
 
 ## Importing
 
