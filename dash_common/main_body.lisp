@@ -102,6 +102,10 @@
         ; to a long press: while it is held the session page fades the values
         ; it is about to clear, so the press is its own confirmation.
         ((= a 12) (stats-reset-max))
+        ; The quick shade. One past the settings page, so paging cannot reach
+        ; it and it does not cost a page slot; pressing it again closes it, as
+        ; does a swipe up.
+        ((= a 16) (setq page-now (if (= page-now (+ page-num 1)) 0 (+ page-num 1))))
         (t nil)
 ))
 
@@ -180,6 +184,16 @@
 ; On the settings page short presses always navigate it
 (defun btn-short (idx)
     (cond
+        ; The quick shade is six buttons in the area the four touch regions
+        ; cover with two, so a press there is resolved by position rather than
+        ; by region. Below the nav strip the regions keep their own actions, so
+        ; there is still a way off the shade without the gesture.
+        ((and (shade-showing) (< touch-y nav-y))
+            (let ((cell (shade-cell-hit touch-x touch-y)))
+                (if cell
+                    (let ((a (ix settings-shade cell)))
+                        (if (!= a 0) (btn-do-action a)))
+                    nil)))
         ((= page-now page-num)
             (cond
                 ((= idx 0) (if (> setting-num 0)
@@ -414,6 +428,12 @@
 
         ; Touch regions stand in for the buttons the other dashes have, so the
         ; same action tables apply. See lib/input.lisp for the region map.
+        ; Swipe down opens the quick shade from any page, swipe up closes it.
+        ; A gesture rather than a region, because on a touch board there is no
+        ; region to spare.
+        (def on-swipe-down (fn () (if (not (shade-showing)) (btn-do-action 16))))
+        (def on-swipe-up (fn () (if (shade-showing) (setq page-now 0))))
+
         (def on-btn-0-pressed (fn () (btn-short 0)))
         (def on-btn-1-pressed (fn () (btn-short 1)))
         (def on-btn-2-pressed (fn () (btn-short 2)))

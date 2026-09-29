@@ -78,7 +78,7 @@
 ; run and every page captured after that point would differ.
 ; Stored rather than assigned: the theme change further down reloads the
 ; settings, and a mask that only existed in a variable would be lost there.
-(settings-set 'page-mask 0x7F)
+(settings-set 'page-mask 0xFF)
 (settings-apply-pages)
 
 ; The chart plots whatever has been sampled, so the harness fills the ring
@@ -105,6 +105,24 @@
 })
 (setq conf-now 8)
 (def kill-sw-active false)
+
+; A 20S pack with one cell down, which is the case the aggregates on the
+; battery page cannot show and the cells page exists for.
+(def battery-a-connected true)
+(def bms-cells (map (fn (i) (if (= i 7) 3.61 (+ 3.92 (* 0.004 (mod i 5))))) (range 20)))
+(defun get-bms-val (name)
+    (cond
+        ((eq name 'bms-cell-num) 20)
+        ((eq name 'bms-v-cell) (ix bms-cells (ix (rest-args) 0)))
+        ((eq name 'bms-bal-state) (= (ix (rest-args) 0) 3))
+        ((eq name 'bms-v-tot) 78.4)
+        ((eq name 'bms-v-cell-min) 3.61)
+        ((eq name 'bms-v-cell-max) 3.94)
+        ((eq name 'bms-i-in-ic) 12.3)
+        ((eq name 'bms-ah-cnt) 4.25)
+        ((eq name 'bms-temp-cell-max) 29.0)
+        ((eq name 'bms-hum) 41.0)
+        (t 0.0)))
 
 ; Plausible PAS values, so the page shows something rather than zeros.
 (def stats-pas-rx true)

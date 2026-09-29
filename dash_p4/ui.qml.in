@@ -24,26 +24,50 @@ Item {
     property int settingMask: 0xF
     property int iconMask: 0x3F
 
+    // Walk assist and the session reset only work as long actions: one is held
+    // and the other uses the hold as its confirmation. They are offered for
+    // both so the list stays one list, and the display ignores them on a short
+    // press. Five of these were missing here, so they could not be bound at
+    // all.
     property var actionNames: [
         "Nothing", "Next page", "Previous page", "Settings page",
         "Drive mode up", "Drive mode down", "Lights",
-        "Cruise control", "Toggle logging"
+        "Cruise control", "Toggle logging", "Reset session (hold)",
+        "Walk assist (hold)", "Save controller config",
+        "Revert controller config", "Quick shade"
     ]
     // Shared codes across the dashes. 7 (backlight) and 11 (sleep) are left
     // out because this board has neither, so the dropdown index is mapped
     // rather than used directly.
-    property var actionCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9]
+    property var actionCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16]
+
+    // The quick shade cannot hold anything, so its cells offer only the
+    // actions a tap can do.
+    property var shadeNames: [
+        "Empty", "Next page", "Previous page", "Settings page",
+        "Drive mode up", "Drive mode down", "Lights",
+        "Cruise control", "Toggle logging", "Save controller config",
+        "Revert controller config", "Close"
+    ]
+    property var shadeCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 14, 15, 16]
+
+    function shadeIndex(code) {
+        var ix = shadeCodes.indexOf(code)
+        return ix < 0 ? 0 : ix
+    }
 
     function actionIndex(code) {
         var ix = actionCodes.indexOf(code)
         return ix < 0 ? 0 : ix
     }
 
+    // One per setting-catalog row in lib/persistent-settings.lisp, in order.
     property var rowNames: [
         "Wheelie enable", "Wheelie angle start", "Wheelie angle end",
         "Wheelie damping",
+        "Backlight bright", "Backlight dim",
         "Battery warning", "Controller warning", "Motor warning",
-        "Metric speed", "Metric temperature"
+        "Metric speed", "Metric temperature", "Theme", "Smoothing"
     ]
 
     // Matches the region map in lib/input.lisp
@@ -162,11 +186,28 @@ Item {
         setSetting("icon-mask", iconMask)
     }
 
+    // Bit per entry of page-catalog in views/view_pages.lbm, in that order.
+    // Four of these were hard-coded check boxes, so the four pages added later
+    // could not be switched on from here at all.
+    property var pageNames: [
+        "Live", "Trip", "Session", "Battery", "PAS", "Chart",
+        "Controller", "Cells"
+    ]
+
     function setPageMask() {
-        var m = (page1On.checked ? 1 : 0) |
-                (page2On.checked ? 2 : 0) |
-                (page3On.checked ? 4 : 0) |
-                (page4On.checked ? 8 : 0)
+        var m = 0
+        for (var i = 0; i < pageRepeater.count; i++) {
+            if (pageRepeater.itemAt(i).checked) {
+                m |= (1 << i)
+            }
+        }
+        // A mask of zero leaves the display with no page to show, and the
+        // firmware falls back to the first one. Say so here rather than
+        // letting it look like the setting did not take.
+        if (m === 0) {
+            m = 1
+            pageRepeater.itemAt(0).checked = true
+        }
         setSetting("page-mask", m)
     }
 
@@ -205,10 +246,9 @@ Item {
             driveModes.value = parseInt(v[7])
 
             var pmask = parseInt(v[8])
-            page1On.checked = (pmask & 1) !== 0
-            page2On.checked = (pmask & 2) !== 0
-            page3On.checked = (pmask & 4) !== 0
-            page4On.checked = (pmask & 8) !== 0
+            for (var pg = 0; pg < pageRepeater.count; pg++) {
+                pageRepeater.itemAt(pg).checked = (pmask & (1 << pg)) !== 0
+            }
 
             settingMask = parseInt(v[9])
             for (var i = 0; i < rowRepeater.count; i++) {
@@ -244,6 +284,10 @@ Item {
             chartSecsBox.currentIndex = parseInt(v[50]) === 5 ? 0 : 1
             // Stored as a fraction, edited in tenths.
             smoothBox.value = Math.round(parseFloat(v[51]) * 10)
+            for (var sc = 0; sc < shadeRepeater.count; sc++) {
+                shadeRepeater.itemAt(sc).currentIndex =
+                    shadeIndex(parseInt(v[52 + sc]))
+            }
             for (var sl = 0; sl < 4; sl++) {
                 var it = slotRepeater.itemAt(sl)
                 it.source = parseInt(v[25 + sl])
@@ -821,35 +865,18 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
 
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
+                        columns: 4
 
-                        CheckBox {
-                            id: page1On
-                            text: "Live"
-                            checked: true
-                            onClicked: if (!loading) setPageMask()
-                        }
+                        Repeater {
+                            id: pageRepeater
+                            model: pageNames
 
-                        CheckBox {
-                            id: page2On
-                            text: "Trip"
-                            checked: true
-                            onClicked: if (!loading) setPageMask()
-                        }
-
-                        CheckBox {
-                            id: page3On
-                            text: "Session"
-                            checked: true
-                            onClicked: if (!loading) setPageMask()
-                        }
-
-                        CheckBox {
-                            id: page4On
-                            text: "Battery"
-                            checked: true
-                            onClicked: if (!loading) setPageMask()
+                            CheckBox {
+                                text: modelData
+                                onClicked: if (!loading) setPageMask()
+                            }
                         }
                     }
 
@@ -990,6 +1017,39 @@ Item {
                           "Short presses are overridden while the settings page " +
                           "is open, so it can always be navigated."
                     font.pointSize: 8
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Utility.getAppHexColor("lightText")
+                    text: "Swipe down on any page for the quick shade, which is " +
+                          "six buttons and the way to reach a control that has " +
+                          "no region left to bind. Swipe up to close it."
+                    font.pointSize: 8
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 6
+                    columns: 2
+
+                    Repeater {
+                        id: shadeRepeater
+                        model: 6
+
+                        ComboBox {
+                            property int cellIndex: index
+                            Layout.fillWidth: true
+                            model: shadeNames
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("shade-" + cellIndex,
+                                               shadeCodes[currentIndex])
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Repeater {

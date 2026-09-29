@@ -100,6 +100,95 @@ presentation.
 Needs ESC firmware 7.02 for the `conf-set` symbols, `get-kill-sw` and
 `conf-store`.
 
+## Quick shade
+
+Swipe **down** on any page for six buttons over the whole panel above the nav
+strip; swipe **up**, press the region bound to `Quick shade`, or tap a `Close`
+cell to leave. It is one past the settings page in `pages`, so paging is modulo
+`page-num` and cannot step onto it and it costs no page slot.
+
+This exists because of how little input a touch board has. Four regions with
+one short and one long action each is all of it, and paging and the settings
+page already take three of the short ones -- so without the shade a rider on an
+S3 or a P4 can reach **one** control. Each cell runs a `btn-do-action` id
+(`shade-0` to `shade-5`), so anything bindable to a button goes here.
+
+Walk assist and the session reset are deliberately not offered: both are held
+actions, the first because the controller expires the request and the second
+because the hold *is* the confirmation, and a tap cannot hold anything. They
+stay on a physical region where the hold indicator can fill.
+
+Each button shows what its control is currently doing where that is knowable --
+the drive mode, lights, cruise, whether the controller config is unsaved -- and
+is drawn in the accent colour while the control is on. Logging says nothing: it
+has no feedback channel, so claiming a state would be a guess.
+
+The gesture is in each board's `lib/input.lisp`: on release, travel over
+`swipe-min-px` (60) that is mostly vertical and has not already become a long
+press. It also fires when the finger crosses out of its region, since a swipe
+that starts above the nav strip and runs down into it has still been made and
+would otherwise be swallowed by the drag-cancel.
+
+While the shade is up, `view-static-thread` stops drawing and holds
+`view-force-static`. It has to: the strip, the speed and the battery bar sit
+under the shade and their dirty tracking would otherwise repaint them over it a
+field at a time. Holding the flag means closing the shade repaints everything,
+which is right -- the tracking was paused and has no idea what the shade
+covered.
+
+`shade-cell-hit` resolves a press by position, the same way `live-cell-hit`
+does, because the touch layer reports two regions where the shade has six
+buttons. Below the nav strip the regions keep their own actions, so there is
+always a way off the shade without the gesture.
+
+## Cells page
+
+One bar per cell, up to 24. The battery page shows aggregates, which cannot
+show a weak cell: a pack with one cell 0.3 V down reads as a slightly low
+minimum and nothing else.
+
+**The bars are scaled to the spread in the pack, not to an absolute cell
+range.** The point is the difference between cells, and on a healthy pack that
+is tens of millivolts, which a 2.5-4.2 V scale would draw as 24 identical bars.
+A 20 mV floor on the span stops a balanced pack magnifying noise into a
+skyline. The row underneath gives the count, the minimum, the average and the
+spread in millivolts, which is what makes the scaling readable.
+
+The lowest cell and any cell the BMS is balancing get a **full-height outline**
+as well as a brighter fill. A cell at the bottom of the spread has almost no
+bar left, and that is both the reading that matters most and the hardest to
+see; the outline keeps the column visible whatever its level.
+
+`get-bms-val` takes a cell index for `bms-v-cell` and `bms-bal-state` and
+**errors** outside `0..cell-num`, so the count is read first and trusted for
+the bounds, and each read is trapped: a pack that reports a count it cannot
+then produce cells for would otherwise take the page down instead of showing
+the rest. State is rounded to 10 mV, since the readings jitter in the last
+digit and an unrounded state redraws the page every frame.
+
+## What the dash cannot switch
+
+Worth being explicit, because the quick shade makes the gap obvious. From the
+dash, over SID 201 and 250, it can set the drive mode, the lights, walk assist,
+cruise, logging and the controller config. It **cannot** switch the turn
+signals, the high beam, the horn or the kill switch: those are inputs on the
+controller side, owned by `vl_bike_39p`, and the dash only receives their state
+in SID 30 and 31.
+
+The obstacle is outputs, not protocol -- SID 201 has five spare bytes. A
+controller exposes exactly **two** script-drivable outputs, `set-aux` ports 1
+and 2, and `dash_esc` already uses both for the lights. Anything more needs
+either free GPIO reachable from LispBM on the specific hardware or a second
+node on the bus that owns the switches.
+
+One consequence worth knowing about: `set-aux` on port 1 sets
+`m_out_aux_mode` to `OUT_AUX_MODE_UNUSED` in the running configuration. Since
+`dash_esc` calls it on every SID 201 frame, **a controller using Auxiliary
+Output Mode on AUX1 -- a Ubox fan, for instance -- has that mode disabled for
+as long as a dash is attached.** It is a RAM-only change, so a power cycle
+restores it, and the dash's own fan indicator reads the pin rather than the
+mode, which is why it still shows the right thing.
+
 ## Theming
 
 `theme-catalog` in `lib/colors.lisp` holds one row per theme:

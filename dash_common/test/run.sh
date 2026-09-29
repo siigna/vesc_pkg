@@ -70,6 +70,13 @@ if [ ! -s build/common/smooth_fn.lisp ]; then
     exit 1
 fi
 
+# The quick shade grid and its hit test, same deal.
+awk '/^\(def shade-cols /,/^\}\)/' ../views/view_pages.lbm > build/common/shade_geom.lisp
+if ! grep -q 'defun shade-cell-hit' build/common/shade_geom.lisp; then
+    echo "could not extract the shade grid from view_pages.lbm" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.

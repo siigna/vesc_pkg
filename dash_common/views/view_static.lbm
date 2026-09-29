@@ -130,6 +130,15 @@
         (view-static-frame)
 
         (loopwhile t {
+            ; The quick shade covers the whole panel above the nav strip, so
+            ; the strip, the speed and the battery bar have to stop repainting
+            ; while it is up or they would draw over it a field at a time.
+            ; Holding the force flag means closing it repaints the lot: their
+            ; dirty tracking was paused and has no idea what the shade covered.
+            (if (shade-showing) {
+                    (setq view-force-static true)
+                    (sleep 0.05)
+            } {
                 ; --- Status strip -------------------------------------------
                 (var pill-y 8)
                 (var pill-h 40)
@@ -272,6 +281,7 @@
                 (setq state-last state-new)
 
                 (sleep 0.05)
+            })
         })
 })
 

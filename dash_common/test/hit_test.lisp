@@ -12,6 +12,18 @@
 (read-eval-program code-stubs)
 
 (import "build/common/live_geom.lisp" 'c-geom)
+(import "build/common/shade_geom.lisp" 'c-shade)
+
+; list-find lives in statistics.lisp, which this test does not load: it wants
+; the two geometry blocks and nothing else.
+(defunret list-find (haystack needle) {
+        (var i 0)
+        (loopwhile (< i (length haystack)) {
+                (if (eq needle (ix haystack i)) (return i))
+                (setq i (+ i 1))
+        })
+        (return nil)
+})
 
 (def checks 0)
 (def fails 0)
@@ -99,5 +111,60 @@
 ; either shipped grid.
 (profile 600 2)
 (check-profile 'odd)
+
+; --- Quick shade grid -----------------------------------------------------
+;
+; Same property, over the whole panel above the nav strip rather than over the
+; page area. Six buttons where the touch layer reports two regions, so a press
+; is resolved by position and the map has to be right for every pixel of it.
+(defun shade-profile (w navy) {
+        (setq disp-w w)
+        (setq nav-y navy)
+        (read-eval-program c-shade)
+})
+
+(defun check-shade (name) {
+        (looprange i 0 (* shade-cols shade-rows) {
+                (var cx (+ (shade-cell-x i) (/ shade-cell-w 2)))
+                (var cy (+ (shade-cell-y i) (/ shade-cell-h 2)))
+                (is (list name 'centre i) (shade-cell-hit cx cy) i)
+        })
+        (is (list name 'origin) (shade-cell-hit 0 0) 0)
+        (is (list name 'last-px)
+            (shade-cell-hit (- (* shade-cols shade-cell-w) 1)
+                            (- (* shade-rows shade-cell-h) 1))
+            (- (* shade-cols shade-rows) 1))
+        (is (list name 'left-of) (shade-cell-hit -1 0) nil)
+        (is (list name 'above) (shade-cell-hit 0 -1) nil)
+        (is (list name 'right-of) (shade-cell-hit (* shade-cols shade-cell-w) 0) nil)
+        ; The nav strip is below the last row, and a press there has to fall
+        ; through to the region actions or there is no way off the shade.
+        (is (list name 'nav-strip) (shade-cell-hit 0 nav-y) nil)
+
+        ; Nothing in the grid may map outside 0..5, and every button has to be
+        ; reachable: a column of zero width would pass the centre test above
+        ; while being untappable.
+        (var seen nil)
+        (var y 0)
+        (loopwhile (< y (* shade-rows shade-cell-h)) {
+                (var x 0)
+                (loopwhile (< x (* shade-cols shade-cell-w)) {
+                        (var c (shade-cell-hit x y))
+                        (if (and c (or (< c 0) (>= c (* shade-cols shade-rows))))
+                            (is (list name 'in-range x y) c 'zero-to-five))
+                        (if (and c (not (list-find seen c))) (setq seen (cons c seen)))
+                        (setq x (+ x 5))
+                })
+                (setq y (+ y 7))
+        })
+        (is (list name 'all-reachable) (length seen) (* shade-cols shade-rows))
+})
+
+(def disp-w 480)
+(def nav-y 450)
+(shade-profile 480 450)
+(check-shade 's3)
+(shade-profile 800 430)
+(check-shade 'p4)
 
 (print (list 'hit checks 'checks fails 'fails))

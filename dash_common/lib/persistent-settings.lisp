@@ -14,6 +14,10 @@
 (def settings-page-mask 0xF)
 ; How far a live cell's value moves towards the real one each redraw. 0 is off,
 ; which is the old behaviour of jumping straight to it.
+; One btn-do-action id per quick shade button, 0 for an empty cell. Defaults
+; to the controls a touch board otherwise cannot reach at all.
+(def settings-shade (list 4 5 6 8 9 14))
+
 (def settings-smooth 0.0)
 
 (def settings-chart-src 4)
@@ -138,6 +142,12 @@
     (theme . (81 i))
     (col-bg . (82 i))
     (smooth . (83 f))
+    (shade-0 . (84 i))
+    (shade-1 . (85 i))
+    (shade-2 . (86 i))
+    (shade-3 . (87 i))
+    (shade-4 . (88 i))
+    (shade-5 . (89 i))
 ))
 
 (defun print-settings ()
@@ -223,7 +233,7 @@
         ; The PAS page is bit 4 and is off in the default mask, since most
         ; vehicles have no pedals. Raise the upper bound when pages are added or
         ; the new page cannot be enabled at all.
-        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x7F 0xF))
+        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0xFF 0xF))
         ; One bit per setting-catalog row. Raise the bound when the catalog
         ; grows, or the new row cannot be enabled at all.
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x1FFF 0xF))
@@ -233,9 +243,9 @@
         ; quietly vanishes.
         ; Upper bound is the last action in btn-do-action. Raise it when actions
         ; are added, or the new one cannot be selected at all.
-        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 15 0))
+        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
                 '(btn0-short btn1-short btn2-short btn3-short)))
-        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 15 0))
+        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
                 '(btn0-long btn1-long btn2-long btn3-long)))
 
         (setq settings-esc-mode (setting-clamp (read-setting 'esc-mode) 0 2 0))
@@ -263,6 +273,11 @@
         ; Off by default: it raises the redraw rate while a value moves, and
         ; the S3 is the board with the least headroom for that.
         (setq settings-smooth (setting-clamp (read-setting 'smooth) 0.0 0.9 0.0))
+
+        ; Same bound as the button actions, for the same reason: an id past the
+        ; end of btn-do-action clamps to 0 and the cell quietly goes blank.
+        (setq settings-shade (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
+                '(shade-0 shade-1 shade-2 shade-3 shade-4 shade-5)))
 
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
@@ -426,7 +441,13 @@
             (str-from-n (read-setting 'col-bg) "%d ")
             (str-from-n settings-chart-src "%d ")
             (str-from-n settings-chart-secs "%d ")
-            (str-from-n settings-smooth "%.2f")
+            (str-from-n settings-smooth "%.2f ")
+            (str-from-n (ix settings-shade 0) "%d ")
+            (str-from-n (ix settings-shade 1) "%d ")
+            (str-from-n (ix settings-shade 2) "%d ")
+            (str-from-n (ix settings-shade 3) "%d ")
+            (str-from-n (ix settings-shade 4) "%d ")
+            (str-from-n (ix settings-shade 5) "%d")
 )))
 
 (defun restore-settings ()
@@ -479,6 +500,10 @@
 
         (write-setting 'theme 0)
         (write-setting 'smooth 0.0)
+
+        (looprange i 0 6
+            (write-setting (ix '(shade-0 shade-1 shade-2 shade-3 shade-4 shade-5) i)
+                (ix '(4 5 6 8 9 14) i)))
 
         ; -1 is "no colour picked", which is what makes the three fall back to
         ; whatever the theme says. Writing an actual colour here would pin them

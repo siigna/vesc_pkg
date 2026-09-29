@@ -38,6 +38,15 @@
 (def btn-hold-region nil)
 (def btn-hold-progress 0.0)
 
+; A flick rather than a tap. Set on release when the finger has travelled far
+; enough, mostly vertically, and quickly enough not to have become a long
+; press. The quick shade rides on this: it has to be reachable from every page
+; without spending one of the four regions on it, since a touch board has no
+; buttons to spare.
+(def swipe-min-px 60)
+(def on-swipe-down nil)
+(def on-swipe-up nil)
+
 @const-start
 
 ; Evaluate expression if the function isn't nil.
@@ -58,6 +67,9 @@
         (def on-btn-1-long-pressed nil)
         (def on-btn-2-long-pressed nil)
         (def on-btn-3-long-pressed nil)
+
+        (def on-swipe-down nil)
+        (def on-swipe-up nil)
 
         (def on-btn-0-repeat-press nil)
         (def on-btn-1-repeat-press nil)
@@ -82,6 +94,8 @@
         (var long-fired nil)
         (var repeat-ts (systime))
         (var t-long-press 0.6)
+        (var down-x 0)
+        (var down-y 0)
 
         (loopwhile t {
                 (sleep 0.02)
@@ -110,13 +124,27 @@
                             (setq long-fired nil)
                             (setq btn-hold-region region)
                             (setq btn-hold-progress 0.0)
+                            (setq down-x touch-x)
+                            (setq down-y touch-y)
                     })
 
                     ; Held. Dragging into another region cancels rather than
                     ; retargeting, which is what a button would do.
                     ((and region btn-now) {
                             (if (not-eq region btn-now)
-                                (progn (setq btn-now nil)
+                                ; Crossing out of the region cancels the press,
+                                ; but a swipe that started above the nav strip
+                                ; and ran down into it has still been made, so
+                                ; it counts here rather than being lost.
+                                (progn
+                                       (if (and (not long-fired)
+                                                (> (abs (- touch-y down-y)) swipe-min-px)
+                                                (> (abs (- touch-y down-y))
+                                                   (* 2 (abs (- touch-x down-x)))))
+                                           (if (> (- touch-y down-y) 0)
+                                               (maybe-call (on-swipe-down))
+                                               (maybe-call (on-swipe-up))))
+                                       (setq btn-now nil)
                                        (setq btn-hold-region nil)
                                        (setq btn-hold-progress 0.0))
                                 {
@@ -151,12 +179,28 @@
 
                     ; Released
                     ((and (not region) btn-now) {
-                            (if (not long-fired)
-                                (cond
-                                    ((= btn-now 0) (maybe-call (on-btn-0-pressed)))
-                                    ((= btn-now 1) (maybe-call (on-btn-1-pressed)))
-                                    ((= btn-now 2) (maybe-call (on-btn-2-pressed)))
-                                    ((= btn-now 3) (maybe-call (on-btn-3-pressed)))
+                            ; A flick counts instead of the tap, never as well
+                            ; as it. Mostly vertical, or a sloppy tap on a
+                            ; button would open the shade; and only while the
+                            ; long press has not fired, since by then the press
+                            ; has already done something else.
+                            (var dx (- touch-x down-x))
+                            (var dy (- touch-y down-y))
+                            (var swipe (and (not long-fired)
+                                            (> (abs dy) swipe-min-px)
+                                            (> (abs dy) (* 2 (abs dx)))))
+
+                            (if swipe
+                                (if (> dy 0)
+                                    (maybe-call (on-swipe-down))
+                                    (maybe-call (on-swipe-up)))
+                                (if (not long-fired)
+                                    (cond
+                                        ((= btn-now 0) (maybe-call (on-btn-0-pressed)))
+                                        ((= btn-now 1) (maybe-call (on-btn-1-pressed)))
+                                        ((= btn-now 2) (maybe-call (on-btn-2-pressed)))
+                                        ((= btn-now 3) (maybe-call (on-btn-3-pressed)))
+                                    )
                                 )
                             )
                             (setq btn-now nil)
