@@ -36,6 +36,43 @@
 (import (str-merge B "font/F_MID") 'font-24)
 (import (str-merge B "font/F_SMALL") 'font-16)
 
+; A 20 series pack, overriding the board profile's 12. The voltages below are
+; derived from a per-cell figure for that reason: the previous demo ran 58.7 V
+; against a 12S profile, which is 4.89 V per cell and above any cell's maximum,
+; so the state of charge estimated from voltage was pegged.
+(def config-battery-cells 20)
+(def config-battery-ah 20.0)
+
+; Cell voltage for a state of charge, over the usable range of the discharge
+; curve the profile carries. Keeps pack voltage, per-cell voltage and the
+; percentage telling the same story.
+(defun demo-cell-v (soc) (+ 3.30 (* 0.88 (clamp01 soc))))
+
+; The harness stubs the BMS to zero, which the battery page correctly reports as
+; no BMS. Answer with a real pack instead, sagging under load like one.
+; The page gates on having heard from a BMS at all, which is set when a BMS
+; frame arrives, so say it has.
+(def battery-a-connected true)
+(def bms-soc 0.92)
+(def bms-load 0.0)
+(defun get-bms-val (k)
+    (if (rest-args)
+        0.0
+        (let ((vc (- (demo-cell-v bms-soc) (* 0.004 bms-load))))
+            (cond
+                ((eq k 'bms-v-tot) (* vc config-battery-cells))
+                ((eq k 'bms-v-cell-min) (- vc 0.02))
+                ((eq k 'bms-v-cell-max) (+ vc 0.01))
+                ((eq k 'bms-cell-num) config-battery-cells)
+                ((eq k 'bms-i-in-ic) bms-load)
+                ((eq k 'bms-ah-cnt) (* config-battery-ah (- 1.0 bms-soc)))
+                ((eq k 'bms-wh-cnt) (* config-battery-ah 3.7
+                                       config-battery-cells (- 1.0 bms-soc)))
+                ((eq k 'bms-temp-cell-max) 27.0)
+                ((eq k 'bms-hum) 41.0)
+                ((eq k 'bms-soc) bms-soc)
+                (t 0.0)))))
+
 (def dm-pool (dm-create config-dm-pool))
 (def screen (img-buffer 'rgb888 disp-w disp-h))
 (set-active-img screen)
@@ -54,7 +91,8 @@
 (setq settings-chart-secs 10)
 
 ; Standing still, battery nearly full, nothing happening yet.
-(def stats-vin 58.7) (def stats-battery-soc 0.92) (def stats-battery-ah 20.0)
+(def stats-vin (* 20 (demo-cell-v 0.92)))
+(def stats-battery-soc 0.92) (def stats-battery-ah 20.0)
 (def stats-kmh 0.0) (def stats-kw 0.0) (def stats-amps-now 0.0)
 (def stats-duty 0.0) (def stats-km 0.0) (def stats-odom 1243.0)
 (def stats-wh 0.0) (def stats-wh-chg 0.0)
@@ -191,13 +229,26 @@
         (setq stats-km (+ 0.0 (* f 0.006)))
         (setq stats-wh (* f 0.55))
         (setq stats-battery-soc (- 0.92 (* f 0.00035)))
-        (setq stats-vin (- 58.7 (* f 0.004)))
+        (setq bms-soc stats-battery-soc)
+        (setq bms-load stats-amps-now)
+
+        ; Pack voltage from the cell curve and the load, rather than a number
+        ; drifting on its own, so it agrees with the cell voltages the battery
+        ; page shows.
+        (setq stats-vin (* config-battery-cells
+                           (- (demo-cell-v stats-battery-soc)
+                              (* 0.004 stats-amps-now))))
         (setq stats-temp-esc (+ 28.0 (* f 0.06)))
         (setq stats-temp-motor (+ 30.0 (* f 0.09)))
         (if (> stats-kmh stats-kmh-max) (setq stats-kmh-max stats-kmh))
         (if (> stats-kw stats-kw-max) (setq stats-kw-max stats-kw))
         (if (> stats-amps-now stats-amps-now-max)
             (setq stats-amps-now-max stats-amps-now))
+        ; The controller reports its own peak separately from the one the dash
+        ; tracks, and the live page's Peak Amps reads that one, so it sat at
+        ; zero for the whole ride.
+        (if (> stats-amps-now stats-amps-max)
+            (setq stats-amps-max stats-amps-now))
 
         ; Some life in the top strip.
         (setq light-on (> f 40.0))

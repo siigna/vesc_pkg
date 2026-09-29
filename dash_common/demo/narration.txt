@@ -18,5 +18,5 @@
 160:172:settings:Controller settings, changed from the dash. Starred rows need the kill switch.
 178:186:trip:Trip page: range, distance, energy and efficiency.
 196:204:session:Session page: the maxima since the last reset.
-214:222:battery:Battery page: pack state, cell voltage and the charge counters.
+214:222:battery:Battery page: a 20 series pack, cell voltages and the charge counters.
 232:238:live:Live page. Any four values, each cell cycled by touch.
