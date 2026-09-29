@@ -18,6 +18,9 @@
 ; to the controls a touch board otherwise cannot reach at all.
 (def settings-shade (list 4 5 6 8 9 14))
 
+(def settings-pin-code 0)
+(def settings-pin-en false)
+
 (def settings-smooth 0.0)
 
 (def settings-chart-src 4)
@@ -148,6 +151,14 @@
     (shade-3 . (87 i))
     (shade-4 . (88 i))
     (shade-5 . (89 i))
+
+    ; A plain four digit number. Anything on the bus can read it; see the note
+    ; on the PIN lock in vehicle-state.lisp for what this is and is not.
+    (pin-code . (90 i))
+    ; i, not b, like every other flag here: setting-flag compares the value
+    ; against 1, and a b cell reads back as a boolean, which makes that a type
+    ; error rather than false.
+    (pin-en . (91 i))
 ))
 
 (defun print-settings ()
@@ -278,6 +289,9 @@
         ; end of btn-do-action clamps to 0 and the cell quietly goes blank.
         (setq settings-shade (map (fn (n) (setting-clamp (read-setting n) 0 21 0))
                 '(shade-0 shade-1 shade-2 shade-3 shade-4 shade-5)))
+
+        (setq settings-pin-code (setting-clamp (read-setting 'pin-code) 0 9999 0))
+        (setq settings-pin-en (setting-flag 'pin-en false))
 
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
@@ -450,7 +464,9 @@
             (str-from-n (ix settings-shade 2) "%d ")
             (str-from-n (ix settings-shade 3) "%d ")
             (str-from-n (ix settings-shade 4) "%d ")
-            (str-from-n (ix settings-shade 5) "%d")
+            (str-from-n (ix settings-shade 5) "%d ")
+            (str-from-n settings-pin-code "%d ")
+            (if settings-pin-en "1" "0")
 )))
 
 (defun restore-settings ()
@@ -507,6 +523,9 @@
         (looprange i 0 6
             (write-setting (ix '(shade-0 shade-1 shade-2 shade-3 shade-4 shade-5) i)
                 (ix '(4 5 6 8 9 14) i)))
+
+        (write-setting 'pin-code 0)
+        (write-setting 'pin-en 0)
 
         ; -1 is "no colour picked", which is what makes the three fall back to
         ; whatever the theme says. Writing an actual colour here would pin them

@@ -55,6 +55,12 @@
 (def conf-seen (bufcreate 16))
 (def conf-dirty false)
 
+; The controller says it is holding a PIN lock. Separate from pin-locked, which
+; is this display's own: the controller can be holding one that this display
+; has no code for, and the strip should say so rather than leave the rider
+; wondering why neutral will not go away.
+(def esc-pin-holding false)
+
 ; Computed Statistics (resettable)
 (def stats-reset-now nil)
 (def stats-kmh-max 0)

@@ -919,6 +919,12 @@
 ; view has to ask as well, and views load before it.
 (defun shade-showing () (= page-now (+ page-num 1)))
 
+(defun pin-showing () (= page-now (+ page-num 2)))
+
+; Either of the two views that cover the whole panel rather than just the page
+; area. The static strip stops drawing while one is up.
+(defun overlay-showing () (or (shade-showing) (pin-showing)))
+
 (defun get-page-shade-state () (list
         drive-mode light-on cruise-control-active conf-dirty
         sig-req (sig-horn-blipping)
@@ -972,6 +978,107 @@
         (setq page-shade-state curr-state)
 })
 
+; --- PIN lock --------------------------------------------------------------
+;
+; A keypad over the whole panel, shown at startup when a PIN is set and until
+; it is entered. While it is up the display asserts neutral instead of the
+; stored drive mode, whose current scale is zero, so the motor will not turn.
+;
+; Be clear about what this is: a deterrent, not security. The PIN is a plain
+; number in eeprom that anything on the bus can read, and the dash-side half
+; stops working the moment the display is unplugged -- dash_esc puts the real
+; limits back five seconds after a display goes quiet. dash_esc 2.7 holds the
+; lock on the controller instead, which closes that, at the price of needing
+; VESC Tool over USB to recover a forgotten PIN.
+
+(def pin-cols 3)
+(def pin-rows 4)
+
+; The entry line sits above the keys.
+(def pin-entry-h 56)
+(def pin-key-top (+ pin-entry-h 4))
+(def pin-key-w (/ disp-w pin-cols))
+(def pin-key-h (/ (- nav-y pin-key-top) pin-rows))
+
+; 1-9 then clear, zero, enter. -1 is clear and -2 is enter, so the cell value
+; is the digit everywhere else and no lookup table is needed.
+(def pin-keys (list 1 2 3 4 5 6 7 8 9 -1 0 -2))
+
+(defun pin-key-x (i) (* (mod i pin-cols) pin-key-w))
+(defun pin-key-y (i) (+ pin-key-top (* (/ i pin-cols) pin-key-h)))
+
+(defun pin-key-label (v)
+    (cond ((= v -1) "C") ((= v -2) "OK") (t (str-from-n v "%d"))))
+
+; Which key a coordinate is over, or nil. Same shape as the other two grids.
+(defun pin-key-hit (x y) {
+        (var cx (/ x pin-key-w))
+        (var cy (/ (- y pin-key-top) pin-key-h))
+        (if (or (< x 0) (< y pin-key-top)
+                (>= cx pin-cols) (>= cy pin-rows))
+            nil
+            (+ (* cy pin-cols) cx))
+})
+
+(defun get-page-pin-state () (list
+        pin-entry-len pin-wait-left (pin-msg)
+))
+
+(def page-pin-state (get-page-pin-state))
+
+(defun page-pin (s) {
+        (var curr-state (get-page-pin-state))
+
+        (if s {
+                (setq page-resources (list
+                        (cons 'pin-key (img-buffer dm-pool 'indexed4
+                                (- pin-key-w 8) (- pin-key-h 8)))
+                        (cons 'pin-top (img-buffer dm-pool 'indexed4
+                                disp-w pin-entry-h))
+                ))
+
+                ; Covers the whole panel above the nav strip, which page-clear
+                ; does not.
+                (var strip (img-buffer dm-pool 'indexed2 disp-w 4))
+                (looprange i 0 (/ nav-y 4)
+                    (disp-render strip 0 (* i 4) (list color-bg color-bg)))
+
+                ; The keys never change, so they are drawn once on entry.
+                (var img (assoc page-resources 'pin-key))
+                (looprange i 0 (* pin-cols pin-rows) {
+                        (img-clear img)
+                        (img-rectangle img 0 0 (- pin-key-w 8) (- pin-key-h 8)
+                            1 '(rounded 8))
+                        ; The big font carries only "0123456789.:-% DVESC", so
+                        ; the digits get it and the two word keys fall back to
+                        ; the mid font, which has the full character set.
+                        (var v (ix pin-keys i))
+                        (ttf-txt-center (pin-key-label v)
+                            (if (< v 0) font-24 font-40) img '(0 3 3 3))
+                        (disp-render img (+ (pin-key-x i) 4) (+ (pin-key-y i) 4)
+                            colors-text-aa)
+                })
+        })
+
+        (if (or s (not-eq curr-state page-pin-state)) {
+                (var top (assoc page-resources 'pin-top))
+                (img-clear top)
+
+                ; One dot per digit entered rather than the digits, and the
+                ; message line instead while there is one to show.
+                (var msg (pin-msg))
+                (if (not (eq msg ""))
+                    (ttf-txt-center msg font-24 top '(0 2 2 2))
+                    ; Asterisks and hyphens, both of which the big font has.
+                    (ttf-txt-center (pin-dots) font-40 top))
+
+                (disp-render top 0 0
+                    (if (> pin-wait-left 0) colors-crit colors-text-aa))
+        })
+
+        (setq page-pin-state curr-state)
+})
+
 ; Index order is stored in settings-page-mask, so only append here.
 (def page-catalog
     (list page-live page-trip page-session page-batt page-pas page-chart
@@ -980,7 +1087,7 @@
 ; The settings page is at page-num and the quick shade one past it. Neither is
 ; in the rotation: paging is modulo page-num, so nothing can step onto them and
 ; they are reached by their own action or gesture.
-(def pages (append page-catalog (list page-settings page-shade)))
+(def pages (append page-catalog (list page-settings page-shade page-pin)))
 
 (defun settings-apply-pages () {
         (var sel nil)
@@ -993,8 +1100,8 @@
         (if (eq sel nil) (setq sel (list (ix page-catalog 0))))
 
         (setq page-num (length sel))
-        (setq pages (append sel (list page-settings page-shade)))
-        (if (> page-now (+ page-num 1)) (setq page-now 0))
+        (setq pages (append sel (list page-settings page-shade page-pin)))
+        (if (> page-now (+ page-num 2)) (setq page-now 0))
 })
 
 (settings-apply-pages)

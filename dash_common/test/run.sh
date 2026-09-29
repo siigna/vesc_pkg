@@ -86,10 +86,18 @@ if ! grep -q 'defun sig-byte' build/common/signal_fn.lisp; then
     exit 1
 fi
 
+# The PIN lock state machine, between its own markers.
+sed -n '/^; --- PIN lock /,/^; --- end PIN lock /p' \
+    ../lib/vehicle-state.lisp > build/common/pin_fn.lisp
+if ! grep -q 'defun pin-submit' build/common/pin_fn.lisp; then
+    echo "could not extract the PIN lock helpers from vehicle-state.lisp" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test walk_test hit_test smooth_test signal_test; do
+for unit in battery_test walk_test hit_test smooth_test signal_test pin_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

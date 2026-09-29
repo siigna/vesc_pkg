@@ -16,6 +16,26 @@
 ; output, that is what they configured it to be anyway. A fresh boot has the
 ; aux outputs off, so the assumed state is the real one.
 (def light-aux-last 0)
+
+; --- PIN lock ---------------------------------------------------------------
+;
+; A deterrent, not security. The code lives on the display, in plain eeprom
+; that anything on the bus can read, and recovering a forgotten one means VESC
+; Tool over USB. What this half adds is that the lock survives the display
+; being unplugged, which the display-side half cannot: the limits are otherwise
+; restored five seconds after a display goes quiet.
+;
+; pin-req is stored and means "ask at every power up". pin-unlocked is not
+; stored, so power cycling re-locks.
+(def pin-req 0)
+(def pin-unlocked false)
+
+(defun pin-holding () (and (= pin-req 1) (not pin-unlocked)))
+
+; Applied once per transition rather than every half second, the same reason
+; the drive profile is: set-profile writes configuration, and writing it ten
+; times a second fights everything else that touches it.
+(def pin-mode-applied false)
 (def drive-mode 1)
 (def val-brk 0.0)
 (def volts-brk 0.0)
@@ -335,6 +355,29 @@
                                     }
                                     (send-msg "Turn the kill switch on to save"))
                         })
+                        ; 3 sets whether a code is required, 4 releases the
+                        ; current power cycle. Neither needs the kill switch:
+                        ; refusing to lock would be unhelpful, and refusing to
+                        ; unlock would make the kill switch a second lock with
+                        ; no way past it.
+                        ((= cmd 3) {
+                                (var want (bufget-u8 data 1))
+                                (if (!= want pin-req) {
+                                        (setq pin-req want)
+                                        (write-setting 'pin-req want)
+                                })
+                                ; Locking now takes effect now. Turning the
+                                ; requirement off releases the current hold as
+                                ; well, or the bike would stay in neutral until
+                                ; a power cycle it no longer needs.
+                                (setq pin-unlocked (= want 0))
+                                (setq pin-mode-applied false)
+                        })
+                        ((= cmd 4) {
+                                (setq pin-unlocked true)
+                                (setq pin-mode-applied false)
+                                (send-msg "Unlocked")
+                        })
                         ((= cmd 2) {
                                 (conf-restore-mc)
                                 (conf-restore-app)
@@ -371,6 +414,14 @@
 
                     (setq drive-mode drive-mode-new)
 
+                    ; While a lock is being held, the mode a display asks for
+                    ; is remembered but not applied: the neutral profile in the
+                    ; periodic thread stays. A display whose own lock is off --
+                    ; a second one, or one whose code has been cleared -- would
+                    ; otherwise send a real mode and undo the hold.
+                    (if (pin-holding) (setq drive-mode-new drive-mode))
+
+                    (if (not (pin-holding))
                     (match drive-mode
                         (0 { ; Reverse
                                 (set-profile
@@ -427,7 +478,7 @@
                                 (app-adc-override 2 0)
                                 (app-adc-detach adc-detach-mode 3)
                         })
-                    )
+                    ))
 
                     (lights-apply light-on)
             })
@@ -825,6 +876,13 @@
         ; profile limits, which is far too much for one new field. An unwritten
         ; cell reads -1 and falls back to both, which is what this did before.
         (light-aux . (21 i))
+
+        ; Whether this controller requires a code from a display at every power
+        ; up. Stored here so that unplugging the display does not unlock the
+        ; bike; the release itself is not stored, so a power cycle comes back
+        ; locked. Added after settings-version 240, same as light-aux, and read
+        ; with a fallback rather than bumping it.
+        (pin-req . (22 i))
 ))
 
 (defun print-settings ()
@@ -866,6 +924,7 @@
         (write-setting 'log-can true)
         (write-setting 'log-bms false)
         (write-setting 'light-aux 3)
+        (write-setting 'pin-req 0)
         (write-setting 'ver-code settings-version)
 
         (write-setting 'mode-r-speed 15.0)
@@ -951,6 +1010,11 @@
         ; existed, means both outputs.
         (setq light-aux (let ((v (read-setting 'light-aux)))
                 (if (or (< v 0) (> v 3)) 3 v)))
+
+        ; Same fallback: a cell written before this setting existed reads -1,
+        ; which is not a requirement to ask for a code.
+        (setq pin-req (let ((v (read-setting 'pin-req)))
+                (if (= v 1) 1 0)))
 
         ; Capture the configured limits, but only when they can be trusted.
         ; A temporary configuration outlives this package: reinstalling or
@@ -1075,6 +1139,9 @@
                 (if (and aux-ok (= 0 (bitwise-and light-aux 1)) (get-aux 1))
                     (setq st (bitwise-or st 2)))
                 (if conf-dirty (setq st (bitwise-or st 4)))
+                ; Bit 3 says this controller is holding a lock, so a display
+                ; can say so even when it is not the one that set it.
+                (if (pin-holding) (setq st (bitwise-or st 8)))
                 (bufset-u8 buf-can 7 st)
                 (can-send-sid 25 buf-can)
 
@@ -1159,7 +1226,24 @@
                         (profile-suspend-set 0))
                 )
 
+                ; The lock outranks the no-display restore below, which is
+                ; the whole reason this half exists: without it the limits come
+                ; back five seconds after a display is unplugged, and the bike
+                ; is unlocked by pulling a connector. Neutral's own profile is
+                ; applied so a display is not needed to hold it either.
+                (if (pin-holding)
+                    (if (not pin-mode-applied) {
+                            (set-profile (read-setting 'mode-n-current-brk) 0
+                                (/ (read-setting 'mode-1-speed) -3.6)
+                                (/ (read-setting 'mode-1-speed) 3.6))
+                            (app-adc-override 2 0)
+                            (app-adc-detach adc-detach-mode 3)
+                            (setq pin-mode-applied true)
+                    })
+                    (setq pin-mode-applied false))
+
                 (if (and limits-stored
+                         (not (pin-holding))
                          (> (secs-since display-ts) 5.0)
                          (< (abs (get-speed)) 0.5))
                     (if profile-last

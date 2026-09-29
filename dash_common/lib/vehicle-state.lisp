@@ -96,7 +96,136 @@
 ; --- end signal requests ----------------------------------------------------
 ; test/run.sh extracts everything between the two markers for signal_test, so
 ; nothing below here can be moved above them.
+
 (def drive-mode 1)
+
+; --- PIN lock ---------------------------------------------------------------
+;
+; A deterrent, not security. The code is a plain number in eeprom that anything
+; on the bus can read, and while only this display enforces it, unplugging the
+; display defeats it: dash_esc puts the real limits back five seconds after a
+; display stops talking. dash_esc 2.7 can hold the lock itself, which closes
+; that at the price of needing VESC Tool over USB to recover a forgotten code.
+;
+; What the display can do is assert neutral, whose current scale is zero, so
+; the motor will not turn. It cannot hold the kill switch: that is an input,
+; and there is no setter for it.
+
+; Digits entered so far, as a number and a count, which is enough for a
+; four-digit code and avoids a list to append to on every key.
+(def pin-entered 0)
+(def pin-entry-len 0)
+
+(def pin-locked false)
+(def pin-len 4)
+
+; Wrong tries, and the systime the current wait started. Escalating, because
+; four digits is ten thousand guesses and a tap is quick.
+(def pin-tries 0)
+(def pin-wait-ts 0)
+(def pin-wait-s 0)
+(def pin-wait-left 0)
+
+; Sticky for a couple of seconds so the rider sees why a press did nothing.
+(def pin-msg-txt "")
+(def pin-msg-ts 0)
+
+(defun pin-notify (txt) {
+        (setq pin-msg-txt txt)
+        (setq pin-msg-ts (systime))
+})
+
+(defun pin-msg ()
+    (if (> pin-wait-left 0)
+        (str-from-n pin-wait-left "wait %d s")
+        (if (< (secs-since pin-msg-ts) 2.0) pin-msg-txt "")))
+
+(defun pin-dots () {
+        (var out "")
+        (looprange i 0 pin-len
+            (setq out (str-merge out (if (< i pin-entry-len) "*" "-") " ")))
+        out
+})
+
+(defun pin-clear () {
+        (setq pin-entered 0)
+        (setq pin-entry-len 0)
+})
+
+; Counted down by the main loop rather than computed in the view, so the view
+; redraws when the number changes and not on every frame.
+(defun pin-tick () {
+        (var left (if (> pin-wait-s 0)
+                      (- pin-wait-s (to-i (secs-since pin-wait-ts)))
+                      0))
+        (setq pin-wait-left (if (> left 0) left 0))
+        (if (and (= pin-wait-left 0) (> pin-wait-s 0)) (setq pin-wait-s 0))
+})
+
+(defun pin-waiting () (> pin-wait-left 0))
+
+; A key: a digit, -1 to clear, -2 to submit. Submitting a short code is
+; treated as a wrong one rather than ignored, so a rider who mistypes gets the
+; same feedback either way.
+; defunret, not defun: the early exit below needs it, and without it every key
+; press during a lockout threw variable_not_bound instead of being ignored.
+(defunret pin-key (v) {
+        (if (pin-waiting) (return nil))
+        (cond
+            ((= v -1) (pin-clear))
+            ((= v -2) (pin-submit))
+            ((< pin-entry-len pin-len) {
+                    (setq pin-entered (+ (* pin-entered 10) v))
+                    (setq pin-entry-len (+ pin-entry-len 1))
+                    ; Submit on the last digit, so a four digit code needs four
+                    ; taps rather than five.
+                    (if (= pin-entry-len pin-len) (pin-submit))
+            })
+        )
+})
+
+(defun pin-submit () {
+        (if (and (= pin-entry-len pin-len) (= pin-entered settings-pin-code))
+            {
+                (setq pin-tries 0)
+                (setq pin-locked false)
+                (pin-clear)
+                (pin-unlock-send)
+            }
+            {
+                (setq pin-tries (+ pin-tries 1))
+                (pin-clear)
+                ; Three free tries, then five seconds a try, capped at a
+                ; minute: long enough to be tedious, short enough that a rider
+                ; who fumbled their own code is not stranded.
+                (if (> pin-tries 3) {
+                        (var w (* 5 (- pin-tries 3)))
+                        (setq pin-wait-s (if (> w 60) 60 w))
+                        (setq pin-wait-ts (systime))
+                })
+                (pin-notify "Wrong code")
+            })
+})
+
+; Lock now, or at startup. Clears any entry in progress and any wait, so the
+; rider is not made to sit out a penalty they earned before locking.
+(defun pin-engage () {
+        (setq pin-locked true)
+        (setq pin-tries 0)
+        (setq pin-wait-s 0)
+        (setq pin-wait-left 0)
+        (pin-clear)
+        (pin-lock-send)
+})
+
+; What goes out as the drive mode while the lock is up. Neutral, index 1, whose
+; current scale is zero. The stored mode is left alone so unlocking puts the
+; rider back in the mode they were in.
+(defun pin-drive-mode () (if pin-locked 1 drive-mode))
+
+; --- end PIN lock -----------------------------------------------------------
+; test/run.sh extracts everything between these markers for pin_test.
+
 
 ; systime of the last mode this display asserted itself. While that is recent
 ; the controller's reported mode is not followed, so a button press, the

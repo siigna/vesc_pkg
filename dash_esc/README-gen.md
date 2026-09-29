@@ -17,6 +17,66 @@ A display button can start and stop logging, using the settings already on this 
 
 The log is closed when a display reports that power is about to go, as well as on the controller's own shutdown, so the last records are not lost when the bike is switched off at the display.
 
+## Lights and the aux outputs
+
+A display's light button is carried out here, on the controller's auxiliary
+outputs. **Light output** on this page picks which: none, AUX1, AUX2 or both.
+Both is the default and is what this package has always done.
+
+It is a setting rather than a constant because `set-aux` on port 1 sets the
+controller's `m_out_aux_mode` to unused in the running configuration. Anything
+else on that pin stops working -- **Auxiliary Output Mode**, which is how a Ubox
+runs its cooling fan, being the case that matters. There is no way to set the
+mode back from a script, so a controller whose AUX1 belongs to the fan has to be
+able to keep the lights off that pin. Set **Light output** to AUX2 and port 1 is
+never touched for as long as this package runs.
+
+The change is to the running configuration only, so a power cycle restores the
+mode either way.
+
+The light command is also applied **on a change** rather than on every frame
+from the display. That matters more than it looks: at the display's 10 Hz frame
+rate the old code re-asserted both outputs ten times a second, so the aux mode
+was cleared again immediately however it got set, and a fan could never run
+while a display was attached. The assumed starting state is "off", which a
+freshly booted controller really is, so with the default setting nothing is
+written to either output until the rider switches the lights on.
+
+The fan indicator on the displays reads AUX1 and is **suppressed while the
+lights own that pin**: its state is then the light state, which the display
+already shows on its own, and reporting it as a fan as well would be wrong.
+
+## PIN lock
+
+A display can ask this controller to require a code at every power up. **Light
+output** aside, this is the one setting here that a display writes rather than
+reads: SID 205 command 3 sets the requirement and command 4 releases the
+current power cycle.
+
+**The requirement is stored here and the release is not**, so a power cycle
+comes back locked. That is the whole reason this half exists. A display-only
+lock is defeated by unplugging the display: the configured limits are restored
+five seconds after a display stops talking, so the bike would be unlocked by
+pulling a connector.
+
+While it is holding, this package applies neutral's own drive profile from its
+periodic thread rather than from a display frame, skips the no-display limit
+restore, and **remembers but does not apply** the mode a display asks for --
+so a second display, or one whose code has been cleared, cannot undo the hold
+by sending a real mode.
+
+Neither command needs the kill switch. Refusing to lock would be unhelpful, and
+refusing to unlock would make the kill switch a second lock with no way past it.
+
+Bit 3 of the SID 25 status byte says the lock is being held, which is what lets
+a display show `LOCKD` even when it is not the display that set the code.
+
+**A forgotten code means VESC Tool over USB**: clear `pin-req` from this page's
+Defaults, or write the eeprom slot directly. That is the price of the lock
+surviving the display being removed, and it is deliberate. The code itself
+lives on the display, in plain eeprom that anything on the bus can read -- this
+is a deterrent, not security.
+
 ## Servicing
 
 Drive modes work by scaling the motor current, so anything the controller measures with current is measured wrong while a mode is applied. Motor detection is the usual case: in neutral the scale is zero and the motor will not turn at all, and in a drive mode it completes but stores values that were measured at part current.
@@ -28,6 +88,30 @@ If the stored motor parameters cannot describe a real motor, the profile is susp
 **Capture these limits as the baseline** records the limits to restore whenever a display goes away or the profile is suspended. Press it once the controller is configured the way you want it.
 
 ## Changelog
+
+**Version 2.7 (2026-09-29)**
+
+- PIN lock, held here rather than only on the display, so unplugging the
+  display no longer unlocks the bike. SID 205 command 3 sets the requirement
+  and 4 releases the power cycle; the requirement is stored and the release is
+  not. While holding, neutral's profile is applied from the periodic thread,
+  the no-display limit restore is skipped, and a mode a display asks for is
+  remembered but not applied.
+- SID 25 status bit 3 reports that the lock is being held.
+- Added at eeprom slot 22 without bumping the settings version, so nothing
+  stored here is reset.
+
+**Version 2.6 (2026-09-29)**
+
+- Light command is applied when it changes instead of ten times a second. The
+  old behaviour re-asserted AUX1 at the display's frame rate, and `set-aux` on
+  port 1 clears `m_out_aux_mode`, so Auxiliary Output Mode -- a Ubox cooling fan
+  -- was held disabled for as long as a display was attached.
+- **Light output** setting: none, AUX1, AUX2 or both. Set it to AUX2 to leave
+  port 1 alone entirely, for a controller that uses it for a fan. Added without
+  bumping the settings version, so nothing stored here is reset; an install from
+  before this reads it as both, which is what it did.
+- Fan indicator no longer reports the lights as the fan when they share AUX1.
 
 **Version 2.5 (2026-09-29)**
 
@@ -68,6 +152,6 @@ If the stored motor parameters cannot describe a real motor, the profile is susp
 
 ### Build Info
 
-- Version: 2.6
-- Build Date: 2026-09-29 14:52:54-07:00
-- Git Commit: #ae82d6e
+- Version: 2.7
+- Build Date: 2026-09-29 16:02:05-07:00
+- Git Commit: #43bdf68

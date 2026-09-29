@@ -128,6 +128,13 @@
         ((= a 19) (sig-toggle sig-right))
         ((= a 20) (sig-toggle sig-beam))
         ((= a 21) (sig-horn-blip))
+
+        ; Lock now. Refused while moving: the display asserts neutral while
+        ; locked, and taking the drive away mid-ride is not something a
+        ; mis-tap should be able to do.
+        ((= a 22) (if (> (abs stats-kmh) 1.0)
+                      (notify "Stop first")
+                      (pin-engage)))
         (t nil)
 ))
 
@@ -187,7 +194,11 @@
 ; on any other page, falls through to the action stored for that region -- so
 ; the session reset on a held region still works everywhere except over a live
 ; cell, where the cell highlight says what the press will do instead.
-(defun btn-long (idx) {
+(defunret btn-long (idx) {
+        ; Locked: a long press does nothing at all. The keypad has no long
+        ; actions and everything else is out of reach.
+        (if (pin-showing) (return nil))
+
         (var pg (ix pages page-now))
         ; Walk assist and the horn are not claimable. Both are held rather than
         ; triggered and both read the held state directly, so claiming the
@@ -207,6 +218,12 @@
 ; On the settings page short presses always navigate it
 (defun btn-short (idx)
     (cond
+        ; Locked: the keypad is the only thing on screen that does anything.
+        ; Nothing falls through to a stored action, or a region bound to paging
+        ; would walk straight off the lock.
+        ((pin-showing)
+            (let ((k (pin-key-hit touch-x touch-y)))
+                (if k (pin-key (ix pin-keys k)) nil)))
         ; The quick shade is six buttons in the area the four touch regions
         ; cover with two, so a press there is resolved by position rather than
         ; by region. Below the nav strip the regions keep their own actions, so
@@ -440,10 +457,34 @@
                 (sleep 5.0)
         })
 
+        ; Locked at startup when a code is set, before anything else can put a
+        ; page on screen. The keypad is one past the quick shade, which is one
+        ; past the settings page.
+        (if settings-pin-en {
+                (pin-engage)
+                (setq page-now (+ page-num 2))
+        })
+
         (loopwhile-thd ("Worker" 150) t {
                 (if settings-redraw (trap (settings-apply-visual)))
                 (if battery-a-charging (mode-set 1)) ; Put in neutral when charging
                 (if kickstand-down (mode-set 1)) ; Put in neutral when kickstand is down
+
+                ; Counts the lockout down here rather than in the view, so the
+                ; keypad redraws when the number changes and not every frame.
+                (pin-tick)
+
+                ; Nothing may navigate off the keypad. btn-short and btn-long
+                ; already refuse to, and the swipe does, but a notification
+                ; path or a second display could still move the page, and the
+                ; cost of being wrong here is a bike that drives while it is
+                ; supposed to be locked.
+                (if (and pin-locked (not (pin-showing)))
+                    (setq page-now (+ page-num 2)))
+
+                ; Unlocking leaves the keypad up until something moves off it.
+                (if (and (not pin-locked) (pin-showing)) (setq page-now 0))
+
                 (sleep 0.1)
         })
 
@@ -454,7 +495,8 @@
         ; Swipe down opens the quick shade from any page, swipe up closes it.
         ; A gesture rather than a region, because on a touch board there is no
         ; region to spare.
-        (def on-swipe-down (fn () (if (not (shade-showing)) (btn-do-action 16))))
+        (def on-swipe-down (fn ()
+            (if (and (not (overlay-showing))) (btn-do-action 16))))
         (def on-swipe-up (fn () (if (shade-showing) (setq page-now 0))))
 
         (def on-btn-0-pressed (fn () (btn-short 0)))

@@ -62,6 +62,9 @@
 ; Returns nil when there is nothing to say, which blanks the slot.
 (defun condition-now ()
     (cond
+        ; Outranks the kill switch: both hold the motor, and this one needs a
+        ; code rather than a switch, so it is the more useful thing to say.
+        (esc-pin-holding (list "LOCKD" colors-red-icon))
         (kill-sw-active (list "KILL" colors-red-icon))
         ((!= stats-fault-code 0) (list "FAULT" colors-red-icon))
         ((!= 0 (bitwise-and stats-pas-flags 0x08)) (list "BRAKE" colors-warn))
@@ -136,12 +139,13 @@
         (view-static-frame)
 
         (loopwhile t {
-            ; The quick shade covers the whole panel above the nav strip, so
-            ; the strip, the speed and the battery bar have to stop repainting
-            ; while it is up or they would draw over it a field at a time.
+            ; The quick shade and the PIN keypad cover the whole panel above
+            ; the nav strip, so the strip, the speed and the battery bar have to
+            ; stop repainting while one is up or they would draw over it a
+            ; field at a time.
             ; Holding the force flag means closing it repaints the lot: their
             ; dirty tracking was paused and has no idea what the shade covered.
-            (if (shade-showing) {
+            (if (overlay-showing) {
                     (setq view-force-static true)
                     (sleep 0.05)
             } {

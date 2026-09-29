@@ -235,6 +235,66 @@ the display is the only thing asking. Hazard lights both arrows either way.
 `test/render_pages.lisp` pins `sig-reported` for the goldens, the way it pins
 the blink, and renders the fallback case separately.
 
+## PIN lock
+
+Off by default. Set a four digit code in VESC Tool and tick **Require it**, and
+the display starts on a keypad and asks the controller to stay in neutral --
+index 1, whose current scale is zero -- until the code is entered. Action 22,
+`Lock now`, locks on demand, and is refused above 1 km/h: taking the drive away
+mid-ride is not something a mis-tap should do.
+
+**Be clear about what this is.** The code is a plain number in eeprom that
+anything on the CAN bus can read, and recovering a forgotten one means VESC
+Tool over USB. It is a deterrent against someone riding off on the bike, in the
+same class as the rest of the VESC ecosystem's stored secrets, and it is not
+theft protection.
+
+The display cannot hold the kill switch -- that is an input with no setter --
+so neutral is the lever, and `pin-drive-mode` substitutes it into byte 0 of
+SID 201 while the lock is up. The stored mode is left alone, so unlocking puts
+the rider back in the mode they were in.
+
+Three digits are free, then five seconds a wrong try, capped at a minute. Long
+enough to be tedious over ten thousand codes; short enough that someone who
+fumbled their own is not stranded. Keys are ignored while the wait runs, so a
+correct code typed during one is not accepted. A fourth digit submits, so a
+four digit code is four taps rather than five, and a short code plus `OK` is
+treated as wrong rather than ignored -- a mistype gets the same feedback either
+way.
+
+Nothing can navigate off the keypad: `btn-short` claims every press for it,
+`btn-long` returns immediately, the swipe is blocked, and the worker thread
+puts the page back if anything else moved it. That last one is belt and braces,
+and it is there because the cost of being wrong is a bike that drives while it
+is supposed to be locked.
+
+### Why the controller half exists
+
+A display-only lock is defeated by unplugging the display. `dash_esc` puts the
+configured limits back five seconds after a display stops talking
+(`main.lisp:1162`), so the bike would be unlocked by pulling a connector.
+
+`dash_esc` 2.7 stores the requirement itself, as `pin-req`, and holds the
+neutral profile from its own periodic thread rather than from a display frame.
+The **release is not stored**, so a power cycle comes back locked -- which is
+the whole point. While it is holding, the mode a display asks for is remembered
+but not applied, so a second display, or one whose code has been cleared, cannot
+undo the hold by sending a real mode.
+
+SID 205 gains two commands: **3** sets the requirement (payload 0 or 1, and
+turning it off also releases the current hold) and **4** releases this power
+cycle. Neither needs the kill switch: refusing to lock would be unhelpful, and
+refusing to unlock would make the kill switch a second lock with no way past
+it. Both are sent three times 60 ms apart, because a single frame has no
+acknowledgement and a lost unlock leaves a rider tapping a correct code at a
+bike that will not move.
+
+Bit 3 of the SID 25 status byte reports that the controller is holding a lock,
+and the status strip shows `LOCKD` for it -- above `KILL`, since both hold the
+motor but this one needs a code rather than a switch. That matters when the
+controller is holding a lock this display has no code for: without it the rider
+sees neutral that will not go away and nothing saying why.
+
 ### Still not switchable
 
 The **kill switch** stays an input: `get-kill-sw` reads it and `dash_esc`

@@ -159,6 +159,10 @@
                     (def kill-sw-active (!= 0 (bitwise-and st 1)))
                     (def aux-on (!= 0 (bitwise-and st 2)))
                     (def conf-dirty (!= 0 (bitwise-and st 4)))
+                    ; The controller is holding a lock of its own. Reported so
+                    ; a display can say why the bike will not move even when it
+                    ; is not the display that set the code.
+                    (def esc-pin-holding (!= 0 (bitwise-and st 8)))
             })
             ((= id 27) {
                     ; One controller setting per frame, cycled by the
@@ -227,7 +231,10 @@
                 ; on it, which costs one byte of a frame that was going out
                 ; anyway. The horn bit is momentary, so it is computed here
                 ; rather than latched.
-                (can-send-sid 201 (list drive-mode (if light-on 1 0)
+                ; pin-drive-mode, not drive-mode: while the lock is up this
+                ; asserts neutral, whose current scale is zero, and leaves the
+                ; stored mode alone so unlocking restores it.
+                (can-send-sid 201 (list (pin-drive-mode) (if light-on 1 0)
                         (if (walk-requested) 1 0) (sig-byte (horn-held))
                         0 0 0 0))
 
@@ -241,6 +248,29 @@
                 (sleep 0.1)
         })
 })
+
+; --- PIN lock, controller side ---------------------------------------------
+;
+; SID 205 command 3 sets whether the controller requires a code at every power
+; up, and 4 releases the current one. The requirement is stored there and the
+; release is not, so a power cycle comes back locked -- which is the whole
+; point of holding it on the controller rather than only here.
+;
+; Sent three times, 60 ms apart. This is a single frame with no
+; acknowledgement, and a lost unlock leaves a rider tapping a correct code at a
+; bike that will not move.
+(defun pin-cmd (cmd val) {
+        (var buf (bufcreate 8))
+        (bufset-u8 buf 0 cmd)
+        (bufset-u8 buf 1 val)
+        (looprange i 0 3 {
+                (can-send-sid 205 buf)
+                (sleep 0.06)
+        })
+})
+
+(defun pin-lock-send () (pin-cmd 3 (if settings-pin-en 1 0)))
+(defun pin-unlock-send () (pin-cmd 4 0))
 
 ; Send event
 ; ID 0: Toggle cruise control
