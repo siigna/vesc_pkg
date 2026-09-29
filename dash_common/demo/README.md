@@ -26,6 +26,12 @@ The plain mp4 is the one to embed somewhere that has its own captions or where
 the text would be in the way; the subtitle track can simply be turned off. The
 demo cut is the one to hand someone.
 
+**`out/` is not in git** -- only `stills/` is. The videos are a few megabytes
+of fully reproducible binary, so they are built rather than stored. Two things
+follow: `demo.sh` starts with `rm -rf build out`, and `--frames` stops before
+the video step, so **a `--frames` run deletes whatever videos were there and
+does not put them back**. Run it without arguments when you want the video.
+
 Captions never overlay the dash. The panel is scaled up and a bar is padded on
 underneath, and the narration sits in the bar.
 
