@@ -14,6 +14,7 @@
 (import (str-merge C "lib/persistent-settings.lisp") 'c-persist)
 (import (str-merge C "lib/statistics.lisp") 'c-stats)
 (import (str-merge C "lib/draw-utils.lisp") 'c-draw)
+(import (str-merge C "lib/battery.lisp") 'c-batt)
 (import (str-merge B "lib/input.lisp") 'c-input)
 (import (str-merge C "views/view_static.lbm") 'c-static)
 (import (str-merge C "views/view_pages.lbm") 'c-pages)
@@ -21,7 +22,7 @@
 (read-eval-program c-config) (read-eval-program c-vehicle)
 (read-eval-program c-colors) (read-eval-program c-user)
 (read-eval-program c-persist) (read-eval-program c-stats)
-(read-eval-program c-draw) (read-eval-program c-input)
+(read-eval-program c-draw) (read-eval-program c-batt) (read-eval-program c-input)
 (read-eval-program c-static) (read-eval-program c-pages)
 
 (import (str-merge B "font/F_SPEED") 'font-speed)

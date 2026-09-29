@@ -55,6 +55,10 @@
         ((= a 7) nil)
         ((= a 8) (comm-send-event 0))
         ((= a 9) (comm-send-event 2)) ; start or stop logging on the controller
+        ; Clears the session maxima, the voltage floor and both timers. Bound
+        ; to a long press: while it is held the session page fades the values
+        ; it is about to clear, so the press is its own confirmation.
+        ((= a 12) (stats-reset-max))
         (t nil)
 ))
 

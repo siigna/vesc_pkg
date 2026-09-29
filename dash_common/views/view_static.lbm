@@ -43,7 +43,7 @@
         kickstand-down                      ; 3
         drive-mode                          ; 4
         cruise-control-active               ; 5
-        (round (* 100.0 stats-battery-soc)) ; 6
+        (round (* 100.0 (batt-soc)))         ; 6
         battery-a-charging                  ; 7
         stats-fault-code                    ; 8
         light-on                            ; 9

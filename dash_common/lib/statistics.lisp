@@ -34,9 +34,24 @@
 (def stats-amps-now-min 0)
 (def stats-fault-codes-observed (list))
 
+; Lowest pack voltage seen this session. Maxima say how hard you pushed;
+; the voltage floor says whether the pack could take it, which is the cheapest
+; sag and pack-health indicator there is -- it tells you if you are getting
+; near the controller's cutoff before it cuts.
+;
+; Starts at nil rather than 0 so the first reading sets it instead of the
+; minimum being stuck at zero forever.
+(def stats-vin-min nil)
+
 ; Computed Statistics (non-resettable)
 (def stats-active-timer 0)
 (def stats-active-timestamp nil)
+
+; Wall-clock time since the session started, against stats-active-timer's
+; moving time. Shown side by side, the gap between them is time spent
+; stopped, which is what a rider actually wants to know.
+(def stats-elapsed-timer 0)
+(def stats-elapsed-timestamp nil)
 
 @const-start
 
@@ -64,6 +79,11 @@
                         (def stats-temp-motor-max 0)
                         (def stats-amps-now-max 0)
                         (def stats-amps-now-min 0)
+                        (def stats-vin-min nil)
+                        (def stats-active-timer 0)
+                        (def stats-active-timestamp nil)
+                        (def stats-elapsed-timer 0)
+                        (def stats-elapsed-timestamp nil)
                         (def stats-reset-now nil)
                 })
 
@@ -92,6 +112,16 @@
                         })
                 })
 
+                ; Minimum pack voltage. Ignore zero, which is what the
+                ; fields read before the first frame arrives.
+                (if (> stats-vin 0.0)
+                    (if (or (not stats-vin-min) (< stats-vin stats-vin-min))
+                        (def stats-vin-min stats-vin)))
+
+                ; Elapsed timer runs from the first frame onward, whether or
+                ; not the vehicle is moving.
+                (if (not stats-elapsed-timestamp) (def stats-elapsed-timestamp (systime)))
+
                 ; Usage Timer - Start
                 (if (and (> stats-kmh 0.0) (not stats-active-timestamp)) (def stats-active-timestamp (systime)))
 
@@ -102,6 +132,26 @@
                         (def stats-active-timestamp nil)
                 })
         })
+})
+
+; Both timers accumulate only when their interval closes, so a live reader has
+; to add the interval still in progress or the number sits still while you
+; ride.
+(defun stats-moving-secs ()
+    (/ (+ stats-active-timer
+          (if stats-active-timestamp (- (systime) stats-active-timestamp) 0))
+       1000.0))
+
+(defun stats-elapsed-secs ()
+    (/ (+ stats-elapsed-timer
+          (if stats-elapsed-timestamp (- (systime) stats-elapsed-timestamp) 0))
+       1000.0))
+
+; Average over moving time, not elapsed: an average that counts time at the
+; lights tells you about the lights.
+(defun stats-avg-kmh () {
+        (var t (stats-moving-secs))
+        (if (> t 1.0) (/ stats-km (/ t 3600.0)) 0.0)
 })
 
 ; Live page sources, (label unit). Stored by index, so only append.
@@ -124,6 +174,13 @@
         ("Peak Amps"  "A")
         ("Top Speed"  "")
         ("Pitch"      "deg")
+        ("Min Pack"   "V")
+        ("Avg Speed"  "")
+        ("Moving"     "")
+        ("Elapsed"    "")
+        ("SOC Volts"  "%")
+        ("SOC Count"  "%")
+        ("SOC Model"  "%")
 ))
 
 (defun slot-value (i)
@@ -145,13 +202,22 @@
         ((= i 14) stats-battery-ah)
         ((= i 15) stats-amps-max)
         ((= i 16) (u-speed stats-kmh-max))
-        (t stats-angle-pitch)
+        ((= i 17) stats-angle-pitch)
+        ((= i 18) (if stats-vin-min stats-vin-min 0.0))
+        ((= i 19) (u-speed (stats-avg-kmh)))
+        ((= i 20) (stats-moving-secs))
+        ((= i 21) (stats-elapsed-secs))
+        ; The three state-of-charge estimates, so they can be compared before
+        ; config-soc-source is pointed at one of them.
+        ((= i 22) (* 100.0 (batt-voltage-soc stats-vin)))
+        ((= i 23) (* 100.0 (batt-coulomb-soc stats-battery-ah)))
+        (t (* 100.0 (batt-model-soc)))
 ))
 
 ; Units that follow the unit setting rather than being fixed.
 (defun slot-unit (i)
     (cond
-        ((or (= i 0) (= i 16)) (u-speed-str))
+        ((or (= i 0) (= i 16) (= i 19)) (u-speed-str))
         ((or (= i 6) (= i 7) (= i 8)) (u-temp-str))
         ((or (= i 10) (= i 11)) (u-dist-str))
         (t (ix (ix slot-catalog i) 1))
@@ -159,8 +225,22 @@
 
 (defun slot-label (i) (ix (ix slot-catalog i) 0))
 
+; The two timers are drawn as h:mm:ss rather than a number of seconds.
+(defun slot-is-time (i) (or (= i 20) (= i 21)))
+
+; m:ss under an hour, h:mm over it. Full h:mm:ss does not fit the value
+; column -- the grid sizes it for a number, and seven characters overflow.
+(defun slot-time-str (secs) {
+        (var s (to-i secs))
+        (if (< s 3600)
+            (str-merge (str-from-n (/ s 60) "%d:") (str-from-n (mod s 60) "%02d"))
+            (str-merge (str-from-n (/ s 3600) "%d:")
+                       (str-from-n (mod (/ s 60) 60) "%02d")))
+})
+
 ; One decimal for the small numbers, none for the ones that get large.
 (defun slot-fmt (i)
     (if (or (= i 1) (= i 5) (= i 9) (= i 12) (= i 13) (= i 15)
-            (= i 2) (= i 3) (= i 6) (= i 7) (= i 8))
+            (= i 2) (= i 3) (= i 6) (= i 7) (= i 8)
+            (= i 22) (= i 23) (= i 24))
         "%.0f" "%.1f"))

@@ -27,6 +27,17 @@
 (def touch-x 0)
 (def touch-y 0)
 
+; How far through its long press each region is, 0.0 to 1.0, and nil when
+; nothing is held. A view can use this to fade the value the press is about
+; to reset, so the thing being destroyed is the progress bar -- no dialog, no
+; extra pixels, and it shows which value the press targets. Releasing early
+; leaves the value alone and it fades back.
+;
+; The idea is from DAVEga (github.com/janpom/davega), which dims the number
+; white to black as you hold.
+(def btn-hold-region nil)
+(def btn-hold-progress 0.0)
+
 @const-start
 
 ; Evaluate expression if the function isn't nil.
@@ -97,14 +108,21 @@
                             (setq btn-start (systime))
                             (setq repeat-ts (systime))
                             (setq long-fired nil)
+                            (setq btn-hold-region region)
+                            (setq btn-hold-progress 0.0)
                     })
 
                     ; Held. Dragging into another region cancels rather than
                     ; retargeting, which is what a button would do.
                     ((and region btn-now) {
                             (if (not-eq region btn-now)
-                                (setq btn-now nil)
+                                (progn (setq btn-now nil)
+                                       (setq btn-hold-region nil)
+                                       (setq btn-hold-progress 0.0))
                                 {
+                                    (setq btn-hold-progress
+                                        (clamp01 (/ (secs-since btn-start) t-long-press)))
+
                                     (if (and (not long-fired)
                                              (>= (secs-since btn-start) t-long-press)) {
                                             (setq long-fired true)
@@ -142,6 +160,8 @@
                                 )
                             )
                             (setq btn-now nil)
+                            (setq btn-hold-region nil)
+                            (setq btn-hold-progress 0.0)
                     })
                 )
 

@@ -41,6 +41,13 @@
 
 (defun colors-shade (c f) (color-mix 0x000000 c f))
 
+; A text ramp faded towards the background by f, where f is how far through a
+; long press the finger is. At 0 it is the normal text ramp; at 1 the value
+; has gone, which is what the press is about to do to it. The value being
+; destroyed is its own progress bar.
+(defun colors-fade-aa (f)
+    (colors-make-aa color-bg (color-mix color-text color-bg (clamp01 f)) 4))
+
 (defun colors-build () {
         (setq colors-theme-2 (colors-make-aa color-bg color-accent 2))
         (setq colors-speed

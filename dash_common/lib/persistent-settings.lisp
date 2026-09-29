@@ -206,9 +206,12 @@
         (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0xF 0xF))
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x7FF 0xF))
 
-        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 11 0))
+        ; The upper bound is the highest action id in btn-do-action. Raise it
+        ; when an action is added, or the new id clamps to 0 and the binding
+        ; quietly vanishes.
+        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 12 0))
                 '(btn0-short btn1-short btn2-short btn3-short)))
-        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 11 0))
+        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 12 0))
                 '(btn0-long btn1-long btn2-long btn3-long)))
 
         (setq settings-esc-mode (setting-clamp (read-setting 'esc-mode) 0 2 0))
@@ -218,7 +221,9 @@
         (setq settings-splash (setting-flag 'splash-en true))
         (setq color-accent (setting-clamp (read-setting 'col-accent) 0 0xFFFFFF 0x00C8FF))
         (setq color-text (setting-clamp (read-setting 'col-text) 0 0xFFFFFF 0xfbfcfc))
-        (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 17 0))
+        ; Upper bound is the last index of slot-catalog. Raise it when the
+        ; catalog grows, or the new sources cannot be selected at all.
+        (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 24 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
         (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF 0xfbfcfc))
                 '(slot-col-0 slot-col-1 slot-col-2 slot-col-3)))
@@ -398,14 +403,16 @@
         (write-setting 'page-mask 0xF)
         (write-setting 'setting-mask 0xF)
 
-        (write-setting 'btn0-short 1)
-        (write-setting 'btn1-short 5)
-        (write-setting 'btn2-short 4)
-        (write-setting 'btn3-short 6)
-        (write-setting 'btn0-long 11) ; power button long press sleeps the display
-        (write-setting 'btn1-long 8)
-        (write-setting 'btn2-long 0)
-        (write-setting 'btn3-long 7)
+        ; From the board's config, not hardcoded: which input index 0 to 3
+        ; means differs per board, so only the board knows a sensible default.
+        (write-setting 'btn0-short (ix config-btn-actions-short 0))
+        (write-setting 'btn1-short (ix config-btn-actions-short 1))
+        (write-setting 'btn2-short (ix config-btn-actions-short 2))
+        (write-setting 'btn3-short (ix config-btn-actions-short 3))
+        (write-setting 'btn0-long (ix config-btn-actions-long 0))
+        (write-setting 'btn1-long (ix config-btn-actions-long 1))
+        (write-setting 'btn2-long (ix config-btn-actions-long 2))
+        (write-setting 'btn3-long (ix config-btn-actions-long 3))
 
         (write-setting 'esc-mode 0)
         (write-setting 'esc-id 0)

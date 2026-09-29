@@ -45,6 +45,14 @@ for f in ../lib/*.lisp;  do strip_const "$f" "build/common/lib/$(basename "$f")"
 for f in ../views/*.lbm; do strip_const "$f" "build/common/views/$(basename "$f")"; done
 
 fail=0
+
+# Unit tests first: pure arithmetic, no board or display involved.
+for unit in battery_test; do
+    out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
+    echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
+    if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi
+done
+
 for spec in "${BOARDS[@]}"; do
     IFS=: read -r board pkg scripts fspeed fbig fmid fsmall <<< "$spec"
     mkdir -p "build/$board/lib" "build/$board/font"

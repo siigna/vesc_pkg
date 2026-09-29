@@ -35,6 +35,9 @@
 (import "../dash_common/lib/draw-utils.lisp" 'code-draw-utils)
 (read-eval-program code-draw-utils)
 
+(import "../dash_common/lib/battery.lisp" 'code-battery)
+(read-eval-program code-battery)
+
 (import "../dash_common/lib/communication.lisp" 'code-communication)
 (read-eval-program code-communication)
 

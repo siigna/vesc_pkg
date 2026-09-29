@@ -43,7 +43,8 @@
 ; are the left and right halves of the screen above it, and 3 is the centre of
 ; the strip. Chosen so the on-screen hints in view_static match.
 (def config-btn-actions-short (list 3 2 1 6))
-(def config-btn-actions-long (list 0 0 0 8))
+; Region 1 is the left half of the screen; holding it clears the session.
+(def config-btn-actions-long (list 0 12 0 8))
 
 ; (swap-xy mirror-x mirror-y), each 0 or 1. Start at (0 0 0) and try
 ; combinations until a tap lands where you put your finger. Must be changed to
@@ -81,3 +82,39 @@
 ; Shown under the speed. Index is the drive mode, so this must be at least
 ; drive-mode-num long.
 (def drive-mode-names '("NEUTRAL" "ECO" "NORMAL" "SPORT" "REVERSE"))
+
+; --- Battery model ------------------------------------------------------
+; Used for the state-of-charge estimates in lib/battery.lisp. The defaults
+; are placeholders: set the cell count and capacity to match your pack before
+; pointing config-soc-source at anything but 'esc, because the model is only
+; as good as these.
+
+; Cells in series, and the pack's rated capacity in amp hours.
+(def config-battery-cells 12)
+(def config-battery-ah 20.0)
+
+; Fraction of the rated capacity to treat as usable, so 0% on the gauge is
+; the reserve you chose rather than cell damage.
+(def config-battery-usable 0.85)
+
+; Per-cell voltages at equally spaced states of charge: first entry empty,
+; last full, the rest dividing the range evenly. Points are crowded between
+; 3.6 and 3.9 V because that is where a lithium curve is flattest and a
+; sparse table reads nearly full for most of a ride. Editing these is how you
+; change chemistry.
+(def config-discharge-ticks
+    (list 3.30 3.60 3.68 3.73 3.77 3.81 3.85 3.90 4.00 4.20))
+
+; How much the voltage estimate counts against the amp-hour one. 1.0 is
+; voltage only, which sags under load; 0.0 is counting only, which drifts.
+(def config-soc-voltage-weight 0.4)
+
+; Which estimate the dash shows and uses for range:
+;   'esc      what the controller reports (the default, and what it did before)
+;   'voltage  from the discharge curve alone
+;   'coulomb  from amp hours alone
+;   'model    the two blended by config-soc-voltage-weight
+;
+; The live page can show all three at once, so you can watch them disagree on
+; a real ride before trusting one.
+(def config-soc-source 'esc)

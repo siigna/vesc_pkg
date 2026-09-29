@@ -11,6 +11,10 @@
 ; because it is written at runtime.
 (def settings-first-row-last -1)
 
+; How faded the session page is drawn, 0 to 1, tracked so a change forces the
+; values to be repainted.
+(def page-session-fade 0.0)
+
 @const-start
 
 ; page-x/y/w/h and page-row-h come from view_static, which owns the layout.
@@ -76,20 +80,29 @@
             (txt-right lblimg (grid-lbl-x i) (grid-y i) (ix labels i)))
 })
 
-(defun grid-values (update strs) {
+(defun grid-values (update strs)
+    (grid-values-col update colors-text-aa strs))
+
+; As grid-values, but in a given colour, so a page can fade itself.
+(defun grid-values-col (update col strs) {
         (var valimg (assoc page-resources 'val-img))
         (looprange i 0 (length strs)
             (if (ix update i)
-                (txt-left valimg (grid-val-x i) (grid-y i) (ix strs i))))
+                (txt-left valimg (grid-val-x i) (grid-y i) (ix strs i) col)))
 })
 
 ; --- Live page: four configurable slots, 2x2 ------------------------------
 
+; A slot is a number unless it is one of the timers, which read as a duration.
+(defun slot-str (i) {
+        (var src (ix settings-slots i))
+        (if (slot-is-time src)
+            (slot-time-str (slot-value src))
+            (str-from-n (to-float (slot-value src)) (slot-fmt src)))
+})
+
 (defun get-page-live-state () (list
-        (str-from-n (to-float (slot-value (ix settings-slots 0))) (slot-fmt (ix settings-slots 0)))
-        (str-from-n (to-float (slot-value (ix settings-slots 1))) (slot-fmt (ix settings-slots 1)))
-        (str-from-n (to-float (slot-value (ix settings-slots 2))) (slot-fmt (ix settings-slots 2)))
-        (str-from-n (to-float (slot-value (ix settings-slots 3))) (slot-fmt (ix settings-slots 3)))
+        (slot-str 0) (slot-str 1) (slot-str 2) (slot-str 3)
 ))
 
 (def page-live-state (get-page-live-state))
@@ -169,7 +182,7 @@
         ; Ride-average consumption, not the instantaneous figure: coasting
         ; drives the latter to zero and the range estimate to infinity.
         (round-x (if (and (> stats-km 0.1) (> stats-wh 0.5))
-                     (/ (* stats-battery-ah stats-battery-soc stats-vin)
+                     (/ (* stats-battery-ah (batt-soc) stats-vin)
                         (/ stats-wh stats-km))
                      0.0) 0.1)               ; 0 Range
         (round-x stats-km 0.1)               ; 1 Trip
@@ -227,9 +240,24 @@
 
 (def page-session-state (get-page-session-state))
 
+; Which touch region resets the session. btn-actions-long holds an action id
+; per region; 12 is "reset the session maxima". Whichever region is bound to
+; it is the one whose hold should fade this page.
+(defun session-reset-region () (list-find btn-actions-long 12))
+
 (defun page-session (s) {
         (var curr-state (get-page-session-state))
         (var update-state (zipwith (fn (x y) (not-eq x y)) page-session-state curr-state))
+
+        ; While that region is held, every value on the page fades towards the
+        ; background in step with the hold, and comes back if you let go.
+        (var rst (session-reset-region))
+        (var fade (if (and rst btn-hold-region (= btn-hold-region rst))
+                      btn-hold-progress 0.0))
+        (if (not-eq fade page-session-fade) {
+                (setq page-session-fade fade)
+                (setq update-state (map (fn (x) t) curr-state))
+        })
 
         (if s {
                 (setq update-state (map (fn (x) t) curr-state))
@@ -242,10 +270,8 @@
         })
 
         (var secs (to-i (ix curr-state 0)))
-        (grid-values update-state (list
-            (str-merge (str-from-n (/ secs 3600) "%d:")
-                       (str-from-n (mod (/ secs 60) 60) "%02d:")
-                       (str-from-n (mod secs 60) "%02d"))
+        (grid-values-col update-state (colors-fade-aa page-session-fade) (list
+            (slot-time-str secs)
             (str-from-n (ix curr-state 1) "%.0f")
             (str-from-n (ix curr-state 2) "%.0f")
             (str-from-n (ix curr-state 3) "%.0f")
