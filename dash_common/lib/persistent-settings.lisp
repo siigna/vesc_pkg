@@ -296,7 +296,10 @@
         (setq settings-slot-maxs (map (fn (n) (setting-clamp (read-setting n) -1000.0 10000.0 100.0))
                 '(slot-max-0 slot-max-1 slot-max-2 slot-max-3)))
 
-        (if (>= drive-mode drive-mode-num) (mode-set 0))
+        ; Neutral, not 0. Index 0 is reverse in the order dash_esc applies, so
+        ; a stored mode past the end of a shortened list used to drop the bike
+        ; into reverse.
+        (if (>= drive-mode drive-mode-num) (mode-set 1))
 })
 
 ; Rows from the mask, capped so none draw off the page.

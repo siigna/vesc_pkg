@@ -58,7 +58,12 @@
 
 ; Shown under the speed. Index is the drive mode, so this must be at least
 ; drive-mode-num long.
-(def drive-mode-names '("NEUTRAL" "ECO" "NORMAL" "SPORT" "REVERSE"))
+; Index for index what dash_esc applies in its drive-mode match, and what
+; dash16 labels R N 1 2 3. The list used to read
+; ("NEUTRAL" "ECO" "NORMAL" "SPORT" "REVERSE"), which labelled index 0 as
+; neutral when the controller treats 0 as reverse, and index 4 as reverse when
+; the controller treats it as the fastest drive mode.
+(def drive-mode-names '("REVERSE" "NEUTRAL" "ECO" "NORMAL" "SPORT"))
 
 ; --- Battery model ------------------------------------------------------
 ; Used for the state-of-charge estimates in lib/battery.lisp. The defaults

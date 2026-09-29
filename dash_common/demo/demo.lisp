@@ -126,7 +126,7 @@
 (def stats-kmh-max 0.0) (def stats-kw-max 0.0) (def stats-amps-now-max 0.0)
 (def stats-amps-max 0.0) (def stats-temp-esc-max 28.0)
 (def stats-temp-motor-max 30.0) (def stats-temp-battery-max 24.0)
-(def drive-mode 1) (def light-on false) (def highbeam-on false)
+(def drive-mode 1) (def light-on false) (def highbeam-on false) ; 1 = neutral
 (def indicate-l-on false) (def indicate-r-on false)
 (def cruise-control-active false) (def cruise-control-speed 0.0)
 (def stats-pas-rx true)
@@ -288,7 +288,10 @@
         (setq light-on (> f 40.0))
         (setq highbeam-on (and (> f 55.0) (< f 80.0)))
         (setq indicate-l-on (and (> f 84.0) (< f 96.0)))
-        (setq drive-mode (cond ((< f 30.0) 1) ((< f 95.0) 3) (t 2)))
+        ; A drive mode, not neutral: index 1 is neutral, whose current scale is
+        ; zero, so the bike could not have been accelerating in it. The demo
+        ; showed neutral for the first three seconds of a ride.
+        (setq drive-mode (cond ((< f 30.0) 2) ((< f 95.0) 4) (t 3)))
         (setq cruise-control-active (and (> f 45.0) (< f 60.0)))
         (setq cruise-control-speed 24.0)
 
@@ -314,7 +317,7 @@
 
         ; Something happening under the shade, so its buttons are visibly
         ; reporting state rather than sitting still.
-        (if (and (>= f 274.0) (< f 286.0)) (setq drive-mode 3))
+        (if (and (>= f 274.0) (< f 286.0)) (setq drive-mode 4))
         (if (and (>= f 278.0) (< f 286.0)) (setq cruise-control-active true))
 
         ; The signal request path: no bike-controls node reporting, so the

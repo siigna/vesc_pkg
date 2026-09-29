@@ -34,6 +34,33 @@ too far to be worth folding in.
 Plus `lib/input.lisp` (buttons and touch regions differ per board), the
 fonts, and three functions: `board-disp-init`, `board-touch-init`, `bl-set`.
 
+## Drive modes
+
+`drive-mode` is an index into `dash_esc`'s own `match`, and that order is
+**reverse, neutral, then the three drive modes**:
+
+| index | `dash_esc` applies | `drive-mode-names` | dash16 draws |
+|---|---|---|---|
+| 0 | reverse profile, ADC2 override on | `REVERSE` | `R` |
+| 1 | neutral: current scale zero | `NEUTRAL` | `N` |
+| 2 | mode 1 | `ECO` | `1` |
+| 3 | mode 2 | `NORMAL` | `2` |
+| 4 | mode 3 | `SPORT` | `3` |
+
+The name list in each board's `config.lisp` **must stay in that order**. It
+previously read `("NEUTRAL" "ECO" "NORMAL" "SPORT" "REVERSE")`, which labelled
+index 0 as neutral when the controller treats it as reverse, and index 4 as
+reverse when the controller treats it as the fastest drive mode. Only the
+labels were wrong -- every place in the code that picks a mode by number
+already used this order, including the charging and kickstand handlers, which
+`mode-set 1` for neutral -- so the bike did what the number said and the screen
+named it wrongly.
+
+`drive-mode-num` is how many of these are selectable, counting from reverse, so
+the mode-up action stops at `drive-mode-num - 1`. When a stored mode is past
+the end of a shortened list, `settings-load` falls back to **1**, not 0: zero
+is reverse.
+
 ## Status strip
 
 Turn signals at the outer edges, then the light pill, the kickstand, one
