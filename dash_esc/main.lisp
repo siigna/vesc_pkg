@@ -2,6 +2,20 @@
 (read-eval-program code-server)
 
 (def light-on 0)
+
+; 0 none, 1 AUX1, 2 AUX2, 3 both. Read from eeprom during init.
+(def light-aux 3)
+
+; What was last written to the aux outputs, so the light command is applied on
+; a change rather than on every frame.
+;
+; Starts at 0, the lights-off state, so nothing is written until the display
+; actually asks for them. That is not just an optimisation: writing port 1 even
+; once clears Auxiliary Output Mode, so a controller running a fan on AUX1
+; keeps it until the rider switches the lights on -- and if AUX1 is the light
+; output, that is what they configured it to be anyway. A fresh boot has the
+; aux outputs off, so the assumed state is the real one.
+(def light-aux-last 0)
 (def drive-mode 1)
 (def val-brk 0.0)
 (def volts-brk 0.0)
@@ -415,16 +429,7 @@
                         })
                     )
 
-                    (if (= light-on 1)
-                        {
-                            (set-aux 1 1)
-                            (set-aux 2 1)
-                        }
-                        {
-                            (set-aux 1 0)
-                            (set-aux 2 0)
-                        }
-                    )
+                    (lights-apply light-on)
             })
 
             ((= id 203) {
@@ -719,6 +724,33 @@
         })
 })
 
+; Drive the aux outputs from the light command.
+;
+; Applied on a change rather than on every frame, which matters more than it
+; looks: set-aux on port 1 sets m_out_aux_mode to OUT_AUX_MODE_UNUSED in the
+; running configuration, so calling it at the display's 10 Hz frame rate keeps
+; Auxiliary Output Mode permanently disabled. A controller using that mode for
+; a fan -- a Ubox, for instance -- would never run it while a display was
+; attached.
+;
+; light-aux is why the edge alone is not enough. Even once per toggle clears
+; the mode, and there is no way to set it back from LispBM, so a controller
+; whose AUX1 belongs to the fan has to be able to keep the light off that pin
+; entirely. Setting it to 2 leaves port 1 untouched for as long as the script
+; runs.
+;
+; The mode is only cleared in RAM, so a power cycle restores it either way.
+(defun lights-apply (on) {
+        (var want (if (= on 1) light-aux 0))
+        (if (not (eq want light-aux-last)) {
+                (if (!= 0 (bitwise-and light-aux 1))
+                    (set-aux 1 (if (!= 0 (bitwise-and want 1)) 1 0)))
+                (if (!= 0 (bitwise-and light-aux 2))
+                    (set-aux 2 (if (!= 0 (bitwise-and want 2)) 1 0)))
+                (setq light-aux-last want)
+        })
+})
+
 (defun save-config (id append-gnss log-local log-can log-bms rate at-boot) {
         (write-setting 'can-id id)
         (write-setting 'log-at-boot at-boot)
@@ -727,6 +759,21 @@
         (write-setting 'log-local log-local)
         (write-setting 'log-can log-can)
         (write-setting 'log-bms log-bms)
+
+        ; Trailing and optional, tested by count rather than by value: index 0
+        ; is a real choice, "drive no output", so a nil test would throw it
+        ; away. An older UI that does not send the argument at all leaves the
+        ; stored value alone rather than resetting it to a default.
+        (if (> (length (rest-args)) 0) {
+                (var v (rest-args 0))
+                (write-setting 'light-aux v)
+                (setq light-aux v)
+                ; Forces the next apply through, so the new mapping takes
+                ; effect without waiting for the rider to toggle the lights.
+                (setq light-aux-last nil)
+                (lights-apply light-on)
+        })
+
         (send-data "Settings Saved!")
 })
 
@@ -771,6 +818,13 @@
         (mode-3-speed       . (18 f))
         (mode-3-current     . (19 f))
         (mode-3-current-brk . (20 f))
+
+        ; Which aux outputs the light command drives. Added after
+        ; settings-version 240 and read with a fallback rather than bumping it:
+        ; a version bump restores every setting here, including the drive
+        ; profile limits, which is far too much for one new field. An unwritten
+        ; cell reads -1 and falls back to both, which is what this did before.
+        (light-aux . (21 i))
 ))
 
 (defun print-settings ()
@@ -811,6 +865,7 @@
         (write-setting 'log-local true)
         (write-setting 'log-can true)
         (write-setting 'log-bms false)
+        (write-setting 'light-aux 3)
         (write-setting 'ver-code settings-version)
 
         (write-setting 'mode-r-speed 15.0)
@@ -842,6 +897,7 @@
             (if (read-setting 'log-local) "1 " "0 ")
             (if (read-setting 'log-can) "1 " "0 ")
             (if (read-setting 'log-bms) "1 " "0 ")
+            (str-from-n light-aux "%d ")
 )))
 
 (defun send-modes ()
@@ -889,6 +945,12 @@
         ; Restore settings if version number does not match
         ; as that probably means something else is in eeprom
         (if (not-eq (read-setting 'ver-code) settings-version) (restore-settings))
+
+        ; After the restore, so a fresh install reads what it just wrote. Out
+        ; of range, including the -1 of a cell written before this setting
+        ; existed, means both outputs.
+        (setq light-aux (let ((v (read-setting 'light-aux)))
+                (if (or (< v 0) (> v 3)) 3 v)))
 
         ; Capture the configured limits, but only when they can be trusted.
         ; A temporary configuration outlives this package: reinstalling or
@@ -1005,7 +1067,13 @@
                 ; show but cannot work out for itself.
                 (var st 0)
                 (if (and killsw-ok (get-kill-sw)) (setq st (bitwise-or st 1)))
-                (if (and aux-ok (get-aux 1)) (setq st (bitwise-or st 2)))
+                ; AUX1 read as the auxiliary output, which is what a fan on
+                ; Auxiliary Output Mode sits on. Suppressed when the light
+                ; command owns that pin: its state is then the light state,
+                ; which the display already shows on its own, and reporting it
+                ; as a fan as well would be wrong.
+                (if (and aux-ok (= 0 (bitwise-and light-aux 1)) (get-aux 1))
+                    (setq st (bitwise-or st 2)))
                 (if conf-dirty (setq st (bitwise-or st 4)))
                 (bufset-u8 buf-can 7 st)
                 (can-send-sid 25 buf-can)

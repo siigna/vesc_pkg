@@ -91,6 +91,34 @@ Item {
                                 text: "CAN Values"
                             }
 
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: Utility.getAppHexColor("lightText")
+                                text: "Which aux outputs a display's light command drives. " +
+                                      "Setting an output at all disables Auxiliary Output " +
+                                      "Mode on it until the next power cycle, so a " +
+                                      "controller running a fan on AUX1 should keep the " +
+                                      "lights off that pin."
+                                font.pointSize: 8
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: "Light output"
+                                    color: Utility.getAppHexColor("lightText")
+                                }
+
+                                ComboBox {
+                                    id: lightAux
+                                    Layout.fillWidth: true
+                                    model: ["None", "AUX1", "AUX2", "AUX1 + AUX2"]
+                                    currentIndex: 3
+                                }
+                            }
+
                             CheckBox {
                                 id: bmsLog
                                 text: "BMS Values"
@@ -509,7 +537,8 @@ Item {
                 text: "Save Config"
 
                 onClicked: {
-                    sendCode("(save-config " + makeArgStr() + " " + startAtBoot.checked + ")")
+                    sendCode("(save-config " + makeArgStr() + " " +
+                             startAtBoot.checked + " " + lightAux.currentIndex + ")")
                     sendCode("(save-modes " + makeModeStr() + ")")
                 }
             }
@@ -575,6 +604,12 @@ Item {
                 localLog.checked = Number(tokens[5])
                 canLog.checked = Number(tokens[6])
                 bmsLog.checked = Number(tokens[7])
+                // Sent by 2.6 and later. An older controller leaves the
+                // combo where it was rather than reading undefined as zero,
+                // which would show the lights as driving nothing.
+                if (tokens.length > 8) {
+                    lightAux.currentIndex = Number(tokens[8])
+                }
                 } else if (str.startsWith("msg ")) {
                 var msg = str.substring(4)
                 VescIf.emitMessageDialog("Logger", msg, false, false)

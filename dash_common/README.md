@@ -177,17 +177,18 @@ in SID 30 and 31.
 
 The obstacle is outputs, not protocol -- SID 201 has five spare bytes. A
 controller exposes exactly **two** script-drivable outputs, `set-aux` ports 1
-and 2, and `dash_esc` already uses both for the lights. Anything more needs
+and 2, and `dash_esc` drives both from the lights by default. Anything more needs
 either free GPIO reachable from LispBM on the specific hardware or a second
 node on the bus that owns the switches.
 
-One consequence worth knowing about: `set-aux` on port 1 sets
-`m_out_aux_mode` to `OUT_AUX_MODE_UNUSED` in the running configuration. Since
-`dash_esc` calls it on every SID 201 frame, **a controller using Auxiliary
-Output Mode on AUX1 -- a Ubox fan, for instance -- has that mode disabled for
-as long as a dash is attached.** It is a RAM-only change, so a power cycle
-restores it, and the dash's own fan indicator reads the pin rather than the
-mode, which is why it still shows the right thing.
+`set-aux` on port 1 also sets `m_out_aux_mode` to `OUT_AUX_MODE_UNUSED` in the
+running configuration, which is why `dash_esc` 2.6 applies the light command on
+a change rather than on every SID 201 frame and lets you choose which outputs
+it drives. Before that it re-asserted both at 10 Hz, so **Auxiliary Output
+Mode -- a Ubox cooling fan -- could not run while a dash was attached.** Set the
+light output to AUX2 and port 1 is never touched at all. The dash's fan
+indicator reads AUX1 and is suppressed while the lights own that pin, since its
+state would then be the light state.
 
 ## Theming
 
