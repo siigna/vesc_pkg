@@ -419,19 +419,24 @@
 ; The flag bits are the ones app_pas_get_flags reports. Only the most
 ; significant one is shown, since there is a single field for it, and the order
 ; here is worst first.
+;
+; Kept to five characters. The grid sizes the value column for a number, and on
+; a four column panel anything longer is cut off mid-word: a demo render of the
+; speed limited state came out as "sp lim". The pas_status terminal command
+; spells each of these out in full.
 (defun pas-status-str (flags)
     (cond
-        ((not stats-pas-rx) "no data")
-        ((!= 0 (bitwise-and flags 0x10)) "no pins")
-        ((!= 0 (bitwise-and flags 0x02)) "bad ch")
-        ((!= 0 (bitwise-and flags 0x04)) "bad brk")
-        ((!= 0 (bitwise-and flags 0x20)) "bad sens")
-        ((!= 0 (bitwise-and flags 0x40)) "no trq hw")
-        ((!= 0 (bitwise-and flags 0x01)) "clipped")
-        ((!= 0 (bitwise-and flags 0x200)) "bad walk")
+        ((not stats-pas-rx) "no rx")
+        ((!= 0 (bitwise-and flags 0x10)) "nopin")
+        ((!= 0 (bitwise-and flags 0x02)) "trqch")
+        ((!= 0 (bitwise-and flags 0x04)) "brkch")
+        ((!= 0 (bitwise-and flags 0x20)) "sens")
+        ((!= 0 (bitwise-and flags 0x40)) "notrq")
+        ((!= 0 (bitwise-and flags 0x01)) "clip")
+        ((!= 0 (bitwise-and flags 0x200)) "wlkch")
         ((!= 0 (bitwise-and flags 0x08)) "brake")
         ((!= 0 (bitwise-and flags 0x100)) "walk")
-        ((!= 0 (bitwise-and flags 0x80)) "sp limit")
+        ((!= 0 (bitwise-and flags 0x80)) "splim")
         (t "ok")
 ))
 
