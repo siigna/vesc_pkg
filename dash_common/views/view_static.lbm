@@ -36,9 +36,47 @@
 ; Touch nav strip. Also the region split used by lib/input.lisp.
 (def nav-y (+ page-y page-h 4))
 
+; Indicator blink. The controller sends the period it is flashing at and the
+; timestamp is when the indicator came on, so this blinks in step with the
+; vehicle rather than at its own rate. Both were being received and thrown away.
+;
+; ind-ms is taken as the half period, time on and then time off, which puts the
+; 430 ms the bike package sends at about 1.2 Hz. The producer does not say which
+; it means, and the other reading would be twice that, which is too fast for a
+; turn signal.
+(defun blink-on () {
+        (var per (if (> indicate-ms 50) indicate-ms 430))
+        (var ms (to-i (* 1000.0 (secs-since indicator-timestamp))))
+        (< (mod ms (* 2 per)) per)
+})
+
+; One slot carries whichever condition matters most, because a 480 px strip has
+; no room for a pill each and these are all momentary. Worst first.
+;
+;   KILL   the kill switch is holding the motor
+;   FAULT  a controller fault code
+;   BRAKE  the brake input is applied, reported by the PAS app
+;   REGEN  the pack is taking current back
+;   FAN    the auxiliary output is on, which is how a cooling fan is switched
+;
+; Returns nil when there is nothing to say, which blanks the slot.
+(defun condition-now ()
+    (cond
+        (kill-sw-active (list "KILL" colors-red-icon))
+        ((!= stats-fault-code 0) (list "FAULT" colors-red-icon))
+        ((!= 0 (bitwise-and stats-pas-flags 0x08)) (list "BRAKE" colors-warn))
+        ((< stats-kw -0.05) (list "REGEN" colors-green-icon))
+        (aux-on (list "FAN" colors-blue-icon))
+        (t nil)
+))
+
+(defun condition-txt () (let ((c (condition-now))) (if c (ix c 0) "")))
+
 (defun view-static-state () (list
-        indicate-l-on                       ; 0
-        indicate-r-on                       ; 1
+        ; The blink phase is part of the state, so the pill toggles through the
+        ; ordinary redraw path rather than needing a timer of its own.
+        (and indicate-l-on (blink-on))      ; 0
+        (and indicate-r-on (blink-on))      ; 1
         highbeam-on                         ; 2
         kickstand-down                      ; 3
         drive-mode                          ; 4
@@ -51,6 +89,7 @@
         (round (u-speed stats-kmh))         ; 11
         service-mode                        ; 12
         (round cruise-control-speed)        ; 13
+        (condition-txt)                     ; 14
 ))
 
 ; Never changes with the vehicle state, so it is not in the state list. Also
@@ -103,18 +142,29 @@
                     (pill ">" (- disp-w 60) pill-y 52 pill-h
                         (ix state-last 1) colors-green-icon))
 
-                (if (ix update-state 8)
-                    (pill "FAULT" (- (/ disp-w 2) 44) pill-y 88 pill-h
-                        (!= (ix state-last 8) 0) colors-red-icon))
+                ; Centred where there is room, and packed in after the
+                ; kickstand slot on a narrow panel, where centring it would
+                ; have it overlap.
+                (if (ix update-state 14) {
+                        (var c (condition-now))
+                        (var cx (let ((mid (- (/ disp-w 2) 35))) (if (< mid 216) 216 mid)))
+                        (pill (if c (ix c 0) "") cx pill-y 70 pill-h
+                            (not-eq c nil)
+                            (if c (ix c 1) colors-red-icon))
+                })
 
                 (if (or (ix update-state 2) (ix update-state 9))
-                    (pill (if (and light-on light-on-is-highbeam) "HIGH" "LIGHT")
+                    ; High beam shows as the word, not only as the colour. The
+                    ; config flag is for hardware whose single light output is
+                    ; the high beam, where there is no separate signal.
+                    (pill (if (or highbeam-on (and light-on light-on-is-highbeam))
+                              "HIGH" "LIGHT")
                         68 pill-y 66 pill-h
                         (or light-on (ix state-last 2))
                         (if (ix state-last 2) colors-blue-icon colors-green-icon)))
 
                 (if (ix update-state 3)
-                    (pill "STAND" 140 pill-y 76 pill-h
+                    (pill "STAND" 140 pill-y 72 pill-h
                         (ix state-last 3) colors-warn))
 
                 (if (or (ix update-state 5) (ix update-state 13))

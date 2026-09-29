@@ -69,5 +69,5 @@ If the stored motor parameters cannot describe a real motor, the profile is susp
 ### Build Info
 
 - Version: 2.5
-- Build Date: 2026-09-29 01:19:05-07:00
-- Git Commit: #44e764b
+- Build Date: 2026-09-29 02:47:43-07:00
+- Git Commit: #ece2fe7

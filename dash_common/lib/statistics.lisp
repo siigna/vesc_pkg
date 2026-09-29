@@ -32,6 +32,10 @@
 (def stats-pas-rider-w 0)
 (def stats-pas-assist-w 0)
 (def stats-pas-rx false)
+; SID 25 byte 7. The controller reports these because the display cannot work
+; them out from anything else it receives.
+(def kill-sw-active false)
+(def aux-on false)
 
 ; Computed Statistics (resettable)
 (def stats-reset-now nil)

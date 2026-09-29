@@ -148,6 +148,11 @@
                     ; is all they need.
                     (def stats-pas-flags (bufget-u16 data 4))
                     (def stats-pas-output (/ (bufget-u8 data 6) 200.0))
+
+                    ; Byte 7 carries conditions the display cannot derive.
+                    (var st (bufget-u8 data 7))
+                    (def kill-sw-active (!= 0 (bitwise-and st 1)))
+                    (def aux-on (!= 0 (bitwise-and st 2)))
             })
             ((= id 26) {
                     (def stats-pas-cadence (/ (bufget-u16 data 0) 10.0))

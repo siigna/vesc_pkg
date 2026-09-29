@@ -34,6 +34,39 @@ too far to be worth folding in.
 Plus `lib/input.lisp` (buttons and touch regions differ per board), the
 fonts, and three functions: `board-disp-init`, `board-touch-init`, `bl-set`.
 
+## Status strip
+
+Turn signals at the outer edges, then the light pill, the kickstand, one
+condition slot and the cruise pill.
+
+The turn signals **blink in step with the vehicle**: the controller sends the
+period it is flashing at and the moment the indicator came on, and the pill is
+derived from both. `ind-ms` is taken as the half period, which puts the 430 ms
+the bike package sends at about 1.2 Hz.
+
+The light pill reads `HIGH` when high beam is on and `LIGHT` otherwise, and is
+blue for high beam, green for low. `light-on-is-highbeam` in the board config is
+for hardware whose single light output *is* the high beam, where there is no
+separate signal to read.
+
+**One condition slot**, because a 480 px strip has no room for a pill each and
+these are all momentary. It shows whichever is most important, worst first:
+
+| | | |
+|---|---|---|
+| `KILL` | red | the kill switch is holding the motor |
+| `FAULT` | red | a controller fault code |
+| `BRAKE` | amber | the brake input is applied |
+| `REGEN` | green | the pack is taking current back |
+| `FAN` | blue | the auxiliary output is on |
+
+`KILL` and `FAN` come from the controller in byte 7 of SID 25, since the display
+cannot work them out for itself; they need ESC firmware 7.02 for `get-kill-sw`
+and `get-aux`, and `dash_esc` probes for both. `BRAKE` comes from the PAS status
+flags, so it needs a PAS brake source configured — there is no general "brake
+applied" signal on a VESC to read otherwise. `REGEN` is derived from pack power
+going negative, so it needs nothing extra.
+
 ## PAS
 
 There is a PAS page showing crank cadence, crank torque, rider power, motor

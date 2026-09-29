@@ -61,6 +61,7 @@
 (def stats-pas-cadence 0.0) (def stats-pas-torque 0.0)
 (def stats-pas-rider-w 0) (def stats-pas-assist-w 0)
 (def stats-pas-output 0.0) (def stats-pas-flags 0)
+(def kill-sw-active false) (def aux-on false) (def stats-fault-code 0)
 
 (defun lerp (a b f) (+ a (* (- b a) (if (< f 0.0) 0.0 (if (> f 1.0) 1.0 f)))))
 
@@ -71,8 +72,11 @@
 ;  60- 80  into the speed taper: assist falls while the rider keeps working
 ;  80- 95  brake: assist cut at once, speed dropping
 ;  95-110  stopped, walk assist nudging along at a walking pace
-; 110-180  pages: trip, session, battery, back to live
-(def demo-frames 180)
+; 110-125  rolling again, coasting with regen into the pack
+; 125-135  the cooling fan comes on
+; 135-142  the kill switch, which outranks everything else
+; 142-210  pages: trip, session, battery, back to live
+(def demo-frames 210)
 
 (defun demo-state (i) {
         (var f (to-float i))
@@ -119,6 +123,13 @@
                     (setq stats-kmh 5.4)
                     (setq stats-pas-flags 0x100)
             })
+            ; Coasting downhill, not pedalling, pack taking current back.
+            ((< f 125.0) {
+                    (setq stats-pas-cadence 0.0)
+                    (setq stats-pas-torque 0.0)
+                    (setq stats-kmh 27.0)
+                    (setq stats-pas-flags 0)
+            })
             ; Rolling again for the remaining pages.
             (t {
                     (setq stats-pas-cadence 72.0)
@@ -140,8 +151,17 @@
         (if (!= 0 (bitwise-and stats-pas-flags 0x100))
             (setq stats-pas-output 0.05))
 
-        ; The rest of the vehicle, driven off speed and assist.
-        (setq stats-kw (/ (+ stats-pas-assist-w 40.0) 1000.0))
+        ; Conditions the strip reports, in the order the slot ranks them. Each
+        ; gets a window of its own so a still of it exists.
+        (setq aux-on (and (> f 125.0) (< f 142.0)))
+        (setq kill-sw-active (and (> f 135.0) (< f 142.0)))
+
+        ; The rest of the vehicle, driven off speed and assist. Coasting with
+        ; no pedalling puts current back into the pack, which is what the regen
+        ; indicator reads.
+        (setq stats-kw (if (and (> f 110.0) (< f 125.0))
+                           -0.9
+                           (/ (+ stats-pas-assist-w 40.0) 1000.0)))
         (setq stats-amps-now (/ (* stats-kw 1000.0) stats-vin))
         (setq stats-duty (/ stats-kmh 45.0))
         (setq stats-km (+ 0.0 (* f 0.006)))
@@ -168,10 +188,10 @@
 ; the others get a look in.
 (defun demo-page (i)
     (cond
-        ((< i 110) 4)       ; PAS
-        ((< i 128) 1)       ; Trip
-        ((< i 146) 2)       ; Session
-        ((< i 164) 3)       ; Battery
+        ((< i 142) 4)       ; PAS, which is where the strip conditions play out
+        ((< i 160) 1)       ; Trip
+        ((< i 178) 2)       ; Session
+        ((< i 196) 3)       ; Battery
         (t 0)               ; Live
 ))
 

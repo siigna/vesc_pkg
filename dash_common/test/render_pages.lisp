@@ -30,6 +30,14 @@
 (import (str-merge B "font/F_MID") 'font-24)
 (import (str-merge B "font/F_SMALL") 'font-16)
 
+; The indicator blink phase is derived from the time since the indicator came
+; on, which would make the turn signal pill land on or off depending on when the
+; render happened. Pinned on, for the same reason the uptime below is pinned:
+; a golden has to be reproducible. blink-on is exercised by its own arithmetic,
+; not by the comparison.
+(def blink-on-live blink-on)
+(defun blink-on () true)
+
 ; The session page's first field is uptime, which makes the render differ
 ; every run. Pin that one element and leave the rest of the page live, rather
 ; than dropping the page from the comparison. secs-since is a builtin and

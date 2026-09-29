@@ -66,6 +66,19 @@
         (_ false)
 ))
 
+; Kill switch and aux readback, both added in firmware 7.02. Probed separately
+; from the PAS getters so that a controller with the firmware but no PAS still
+; reports them.
+(def killsw-ok (match (trap (get-kill-sw))
+        ((exit-ok (? a)) true)
+        (_ false)
+))
+
+(def aux-ok (match (trap (get-aux 1))
+        ((exit-ok (? a)) true)
+        (_ false)
+))
+
 @const-start
 
 ; Provides ext-cmd-proc
@@ -882,6 +895,13 @@
                         (bufset-u16 buf-can 4 (app-pas-get-flags))
                         (bufset-u8 buf-can 6 (clamp01 (app-pas-get-output) 200))
                 })
+
+                ; Byte 7 was spare. A bit each for conditions the display can
+                ; show but cannot work out for itself.
+                (var st 0)
+                (if (and killsw-ok (get-kill-sw)) (setq st (bitwise-or st 1)))
+                (if (and aux-ok (get-aux 1)) (setq st (bitwise-or st 2)))
+                (bufset-u8 buf-can 7 st)
                 (can-send-sid 25 buf-can)
 
                 ; PAS values. Only sent when the firmware provides them, so a

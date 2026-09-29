@@ -95,8 +95,9 @@ if [ "$VIDEO" = 1 ]; then
     mkdir -p stills
     for board in s3 p4; do
         for spec in "0020:pulling-away" "0050:steady-assist" "0072:speed-taper" \
-                    "0088:braking" "0102:walk-assist" "0120:trip" \
-                    "0138:session" "0156:battery" "0172:live"; do
+                    "0088:braking" "0102:walk-assist" "0118:regen" \
+                    "0130:fan" "0138:kill-switch" "0150:trip" \
+                    "0168:session" "0186:battery" "0202:live"; do
             IFS=: read -r frame name <<< "$spec"
             [ -f "out/${board}_${frame}.png" ] && \
                 cp "out/${board}_${frame}.png" "stills/${board}_${name}.png"
