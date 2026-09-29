@@ -15,12 +15,12 @@
 ; Layout. The whole screen is described here, including the page area that
 ; view_pages draws into, so the bands cannot drift apart. Everything below is
 ; derived by stacking, so changing one height moves what follows it.
-(def disp-w 480)
-(def disp-h 480)
-
-(def strip-h 54)		; status strip along the top
+;
+; disp-w, disp-h, strip-h, speed-h, page-h, page-cols and page-row-h come
+; from the board
+; profile in config.lisp, because they are the only numbers that differ
+; between a 480x480 and an 800x480 panel.
 (def speed-y (+ strip-h 2))
-(def speed-h 130)
 (def unit-y (+ speed-y speed-h 2))
 (def unit-h 24)
 (def mode-y (+ unit-y unit-h 2))
@@ -32,8 +32,6 @@
 (def page-x 0)
 (def page-w disp-w)
 (def page-y (+ batt-y batt-h 8))
-(def page-h 144)
-(def page-row-h 36)
 
 ; Touch nav strip. Also the region split used by lib/input.lisp.
 (def nav-y (+ page-y page-h 4))
@@ -93,18 +91,20 @@
                 (var pill-y 8)
                 (var pill-h 40)
 
-                ; Turn signals sit at the outer edges
+                ; Turn signals sit at the outer edges, the fault in the
+                ; middle, and the rest fill in from the left. All derived from
+                ; disp-w so a wider panel spreads them rather than leaving the
+                ; right half empty.
                 (if (ix update-state 0)
                     (pill "<" 8 pill-y 52 pill-h
                         (ix state-last 0) colors-green-icon))
 
                 (if (ix update-state 1)
-                    (pill ">" 420 pill-y 52 pill-h
+                    (pill ">" (- disp-w 60) pill-y 52 pill-h
                         (ix state-last 1) colors-green-icon))
 
-                ; Fault outranks the rest, so it gets the middle
                 (if (ix update-state 8)
-                    (pill "FAULT" 196 pill-y 88 pill-h
+                    (pill "FAULT" (- (/ disp-w 2) 44) pill-y 88 pill-h
                         (!= (ix state-last 8) 0) colors-red-icon))
 
                 (if (or (ix update-state 2) (ix update-state 9))
@@ -121,7 +121,7 @@
                     (pill (if (ix state-last 5)
                               (str-from-n (to-i (u-speed cruise-control-speed)) "CC %d")
                               "CC")
-                        290 pill-y 124 pill-h
+                        (- disp-w 192) pill-y 124 pill-h
                         (ix state-last 5) colors-green-icon))
 
                 ; --- Speed --------------------------------------------------
@@ -196,7 +196,7 @@
                         ; by lib/input.lisp, left to right.
                         (ttf-text imgbuf 24 22 '(0 1 2 3) font-24
                             (if (>= page page-num) "BACK" "SET"))
-                        (ttf-text imgbuf 436 22 '(0 1 2 3) font-24 ">")
+                        (ttf-text imgbuf (- disp-w 44) 22 '(0 1 2 3) font-24 ">")
                         (ttf-txt-center
                             (if (>= page page-num)
                                 "Settings"

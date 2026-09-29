@@ -1,6 +1,6 @@
 @const-start
 
-; Waveshare ESP32-S3-Touch-LCD-4, 480x480. Board profile and bring-up; the
+; Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, 800x480. Board profile and bring-up; the
 ; dash itself is ../dash_common.
 ;
 ; Every import in the package has to be here: vesc_tool packs imports by
@@ -49,10 +49,10 @@
 ; would mean shipping Roboto-Bold.ttf, which is larger than the fonts and the
 ; whole source put together. The two big ones carry only the glyphs they can
 ; draw, plus a "D" that ttf-txt-center measures to find the baseline.
-(import "font/roboto-bold-108-4c.bin" 'font-speed)
+(import "font/roboto-bold-120-4c.bin" 'font-speed)
 (import "font/roboto-bold-40-4c.bin" 'font-40)
 (import "font/roboto-bold-24-4c.bin" 'font-24)
-(import "font/roboto-bold-16-4c.bin" 'font-16)
+(import "font/roboto-bold-18-4c.bin" 'font-16)
 
 ; Views. These read the layout constants out of config.lisp, so they have to
 ; be loaded after it.
@@ -64,18 +64,27 @@
 
 @const-start
 
-; disp-init comes from this board's hardware config and carries the 20-pin
-; parallel RGB map, so the package holds no display pins.
+; This panel is already supported upstream, so unlike the S3 board there is no
+; board-specific disp-init to call: disp-load-st7701 takes the two numbers it
+; needs. They live in config.lisp rather than here.
+;
+; The panel is 480x800 native, so the rotation is what makes it landscape, and
+; it has to be applied before touch is loaded because touch is told the
+; rotated size.
 (defun board-disp-init () {
-        (disp-init)
+        (disp-load-st7701 config-disp-rst config-disp-lane-mbps)
         (ext-disp-orientation config-disp-rotation)
 })
 
-(defun board-touch-init () (apply touch-load-gt911 (touch-pins)))
+(defun board-touch-init ()
+    (touch-load-gt911 config-touch-sda config-touch-scl
+                      config-touch-rst config-touch-int
+                      disp-w disp-h))
 
-; This panel has no backlight control, so this exists only because the shared
-; settings layer calls it.
-(defun bl-set (level) nil)
+; Real PWM backlight. The pin is active-LOW, so the duty is inverted; the
+; firmware parks it off in hw_init so nothing shows before the first draw.
+(defun bl-set (level)
+    (pwm-start config-bl-freq (- 1.0 (clamp01 level)) 0 config-bl-pin))
 
 @const-end
 

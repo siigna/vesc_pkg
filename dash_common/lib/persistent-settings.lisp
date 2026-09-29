@@ -15,12 +15,11 @@
 
 (def settings-setting-mask 0xF)
 
-; Short/long action id per touch region. See btn-do-action, and the region map
-; in lib/input.lisp: region 0 is the left of the nav strip, 1 and 2 are the
-; left and right halves of the screen above it, and 3 is the centre of the
-; strip. Defaults are chosen so the on-screen hints in view_static match.
-(def btn-actions-short (list 3 2 1 6))
-(def btn-actions-long (list 0 0 0 8))
+; Short/long action id per button or touch region. See btn-do-action. Which
+; input a given index means, and therefore what a sensible default is, depends
+; on the board, so the defaults come from its config.lisp.
+(def btn-actions-short config-btn-actions-short)
+(def btn-actions-long config-btn-actions-long)
 
 ; 0 auto, 1 assume dash_esc, 2 assume stock.
 (def settings-esc-mode 0)

@@ -14,9 +14,30 @@
 (def config-curr-accel 80.0)
 (def config-curr-brake 60.0)
 
+; --- Board profile ------------------------------------------------------
+; The panel, and the four layout numbers that differ between panels. Every
+; other band in view_static is derived by stacking from these.
+(def disp-w 480)
+(def disp-h 480)
+(def strip-h 54)        ; status strip along the top
+(def speed-h 130)       ; big speed readout
+(def page-h 144)        ; swappable page area
+(def page-cols 2)       ; label/value columns; 8 cells, so 2 cols = 4 rows
+(def page-row-h 36)     ; must fit the font the page grid draws with
+
+; Image buffers are full-width strips, so this scales with the panel.
+(def config-dm-pool 131072)
+
 ; Display rotation, 0-3. The panel is square, so any of the four is usable and
 ; which one is "up" depends on how the board sits in its case.
 (def config-disp-rotation 0)
+
+; Action id per touch region, short and long press. See btn-do-action, and the
+; region map in lib/input.lisp: region 0 is the left of the nav strip, 1 and 2
+; are the left and right halves of the screen above it, and 3 is the centre of
+; the strip. Chosen so the on-screen hints in view_static match.
+(def config-btn-actions-short (list 3 2 1 6))
+(def config-btn-actions-long (list 0 0 0 8))
 
 ; (swap-xy mirror-x mirror-y), each 0 or 1. Start at (0 0 0) and try
 ; combinations until a tap lands where you put your finger. Must be changed to

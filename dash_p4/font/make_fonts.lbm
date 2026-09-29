@@ -1,0 +1,38 @@
+; Regenerates the pre-rendered fonts. Run ./generate_fonts, which needs the
+; LispBM repl (main/lispBM/repl in the vesc_express tree, built with
+; FEATURES="64") on PATH as lbm.
+;
+; Preparing these on the device instead would mean shipping Roboto-Bold.ttf,
+; and at ~145 kB that alone blows the package's lisp budget.
+
+; The file extensions are named f-open/f-write/f-close in the current repl and
+; fopen/fwrite/fclose in older builds. Bind whichever is missing.
+(if (eq (car (trap (eval 'fopen))) 'exit-error)
+    (progn
+        (define fopen f-open)
+        (define fwrite f-write)
+        (define fclose f-close)
+))
+
+(def f-roboto (fopen "Roboto-Bold.ttf" "r"))
+(def roboto (load-file f-roboto))
+(fclose f-roboto)
+
+(def all-chars (bufcreate 96))
+(looprange i 0 96 (bufset-u8 all-chars i (+ i 32)))
+(bufset-u8 all-chars 95 0)
+
+(defun emit (name size fmt chars) {
+        (var font (ttf-prepare roboto size fmt chars))
+        (var f (fopen name "w"))
+        (fwrite f font)
+        (fclose f)
+        (print (list name size (buflen font)))
+})
+
+; ttf-txt-center measures a "D" to find the baseline, so every font needs one
+; even when nothing it draws contains a letter.
+(emit "roboto-bold-120-4c.bin" 120 'indexed4 "0123456789-D")
+(emit "roboto-bold-40-4c.bin"   40 'indexed4 "0123456789.:-% DVESC")
+(emit "roboto-bold-24-4c.bin"   24 'indexed4 all-chars)
+(emit "roboto-bold-18-4c.bin"   18 'indexed4 all-chars)

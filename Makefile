@@ -6,7 +6,7 @@ PKGS += dash35b vl_bike_39p lib_bq27441 boosted_doctor dash16
 PKGS += lib_tca9534 UnleashedCreativityLights wheelie_limiter
 PKGS += mt6701_config dash_esc vesc_scooter_support lib_esp_led_strip vl_link_status
 PKGS += scooter_dashboard_support vesc_x3_bridge legacy_dc_dpv
-PKGS += dash_vdisp
+PKGS += dash_vdisp dash_s3 dash_p4
 
 TEST_PKGS = blacktip_dpv
 

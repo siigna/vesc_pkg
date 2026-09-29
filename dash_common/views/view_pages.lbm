@@ -53,19 +53,21 @@
         (disp-render imgbuf x y color)
 })
 
-; Two label/value columns, four rows. Every text page here uses this frame, so
-; the column geometry is defined once.
-(def col-lbl-w 150)
-(def col-val-w 76)
+; A label/value grid of page-cols columns. Every text page supplies eight
+; cells, so the rows per column follow from the column count: a square panel
+; gets 2x4, a wide one 4x2, and no page has to know which.
+(def page-rows (/ 8 page-cols))
+(def col-w (/ page-w page-cols))
 (def col-gap 12)
-(def col-0-lbl page-x)
-(def col-0-val (+ col-0-lbl col-lbl-w col-gap))
-(def col-1-lbl (+ page-x 240))
-(def col-1-val (+ col-1-lbl col-lbl-w col-gap))
+; Labels are right-aligned into their share of the column and values start a
+; fixed gap later, so the two never run together.
+(def col-lbl-w (/ (* col-w 5) 8))
+(def col-val-w (- col-w col-lbl-w col-gap))
 
-(defun grid-lbl-x (i) (if (< i 4) col-0-lbl col-1-lbl))
-(defun grid-val-x (i) (if (< i 4) col-0-val col-1-val))
-(defun grid-y (i) (+ page-y (* (mod i 4) row-h)))
+(defun grid-col-x (i) (+ page-x (* (/ i page-rows) col-w)))
+(defun grid-lbl-x (i) (grid-col-x i))
+(defun grid-val-x (i) (+ (grid-col-x i) col-lbl-w col-gap))
+(defun grid-y (i) (+ page-y (* (mod i page-rows) row-h)))
 
 ; Draws the eight static labels of a two-column page
 (defun grid-labels (labels) {
@@ -107,6 +109,19 @@
         })
 })
 
+; The four slots follow the page grid rather than always being 2x2: a wide
+; panel lays them in one row, a square one in two. A 2x2 on the short page
+; area a wide panel leaves would overflow the nav strip.
+(def live-cols (if (>= page-cols 4) 4 2))
+(def live-rows (/ 4 live-cols))
+(def live-cell-w (/ page-w live-cols))
+(def live-cell-h (/ page-h live-rows))
+(def live-lbl-h 24)
+(def live-val-h 46)
+
+(defun live-cell-x (i) (+ page-x (* (mod i live-cols) live-cell-w) 8))
+(defun live-cell-y (i) (+ page-y (* (/ i live-cols) live-cell-h)))
+
 (defun page-live (s) {
         (var curr-state (get-page-live-state))
         (var update-state (zipwith (fn (x y) (not-eq x y)) page-live-state curr-state))
@@ -115,27 +130,22 @@
         (looprange i 0 4
             (if (= (ix settings-slot-modes i) 1) (setix update-state i true)))
 
-        (var cell-w (/ page-w 2))
-        (var cell-h (/ page-h 2))
-
         (if s {
                 (setq update-state (map (fn (x) t) curr-state))
 
                 (setq page-resources (list
-                        (cons 'val-img (img-buffer dm-pool 'indexed4 (- cell-w 16) 42))
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 (- live-cell-w 16) live-val-h))
                 ))
 
                 (page-clear)
 
-                (var lblimg (img-buffer dm-pool 'indexed4 (- cell-w 16) 24))
+                (var lblimg (img-buffer dm-pool 'indexed4 (- live-cell-w 16) live-lbl-h))
                 (looprange i 0 4 {
                         (var src (ix settings-slots i))
                         (img-clear lblimg)
                         (ttf-text lblimg 4 18 '(0 1 2 3) font-16
                             (str-merge (slot-label src) "  " (slot-unit src)))
-                        (disp-render lblimg
-                            (+ page-x (* (mod i 2) cell-w) 8)
-                            (+ page-y (* (/ i 2) cell-h) 2)
+                        (disp-render lblimg (live-cell-x i) (+ (live-cell-y i) 2)
                             colors-text-aa)
                 })
         })
@@ -145,10 +155,8 @@
             (if (ix update-state i) {
                     (img-clear valimg)
                     (ttf-text valimg 8 36 '(0 1 2 3) font-40 (ix curr-state i))
-                    (disp-render valimg
-                        (+ page-x (* (mod i 2) cell-w) 8)
-                        (+ page-y (* (/ i 2) cell-h) 26)
-                        (slot-colors i))
+                    (disp-render valimg (live-cell-x i)
+                        (+ (live-cell-y i) live-lbl-h 2) (slot-colors i))
             })
         )
 
@@ -341,7 +349,7 @@
                 (setq settings-first-row-last first-row)
 
                 (setq page-resources (list
-                        (cons 'val-img (img-buffer dm-pool 'indexed4 160 row-h))
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 (- page-w 224) row-h))
                 ))
 
                 (page-clear)
