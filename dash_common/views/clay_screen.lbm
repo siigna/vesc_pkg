@@ -1,0 +1,145 @@
+; The whole dash screen as a Clay description.
+;
+; This is the layout the hand-written views cannot express. view_static
+; stacks bands vertically, which suits a square panel; on a 1.67:1 one it
+; leaves the sides of the speed readout empty and squeezes the page area until
+; the settings list only fits two rows. Using the width means putting the
+; speed on the left and the pages beside it, and that is a different
+; arrangement rather than different constants -- which is why it needed a
+; layout engine and not another derived value.
+;
+; The same cells, labels and values feed both arrangements. Which one is used
+; is decided once, by aspect ratio.
+;
+; Needs clay-layout, so only on a board built with HW_USE_CLAY.
+
+(def clay-fonts nil)    ; (list font-16 font-24 font-40 font-speed)
+(def clay-f-small 0)
+(def clay-f-mid 1)
+(def clay-f-big 2)
+(def clay-f-speed 3)
+
+; Palette indices used in the descriptions. The drawer maps each to a 4-step
+; ramp in an indexed16 buffer, so anti-aliased edges blend to the right
+; colour instead of everything sharing one ramp.
+(def cp-panel 1)
+(def cp-accent 2)
+(def cp-text 3)
+(def cp-ok 4)
+
+@const-start
+
+(defun clay-pill (txt on)
+    (list 'box '(h 40) '(pad 12) (list 'bg (if on cp-panel 0)) '(radius 6)
+        (list 'text (list 'font clay-f-mid) '(size 24)
+              (list 'fg (if on cp-text cp-panel)) (cons 'str txt))))
+
+(defun clay-spacer () '(box (w grow) (h 1)))
+
+; Status strip, the same on both arrangements
+(defun clay-strip (st)
+    (list 'row '(w grow) (list 'h strip-h) '(gap 6)
+        (clay-pill "<" (ix st 0))
+        (clay-pill "LIGHT" (ix st 1))
+        (clay-pill "CC" (ix st 2))
+        (clay-spacer)
+        (clay-pill ">" (ix st 3))))
+
+; Speed, units and drive mode
+(defun clay-speed (speed unit mode)
+    (list 'col '(w grow) '(h grow) '(gap 2)
+        (list 'row '(w grow) '(h grow)
+            (list 'text (list 'font clay-f-speed) '(size 120)
+                  (list 'fg cp-text) (cons 'str speed)))
+        (list 'row '(w grow) '(h 26)
+            (list 'text (list 'font clay-f-mid) '(size 24)
+                  (list 'fg cp-accent) (cons 'str unit)))
+        (list 'row '(w grow) '(h 30)
+            (list 'text (list 'font clay-f-mid) '(size 24)
+                  (list 'fg cp-text) (cons 'str mode)))))
+
+; Battery bar. The fill is a percentage of the track, so it is the ratio from
+; the pack rather than a width someone computed.
+(defun clay-batt (soc txt)
+    (list 'row '(w grow) '(h 44) (list 'bg cp-panel) '(radius 8) '(pad 3)
+        (list 'box (list 'w (list 'pct soc)) '(h grow) (list 'bg cp-ok) '(radius 6)
+            (list 'text (list 'font clay-f-mid) '(size 24)
+                  (list 'fg cp-text) (cons 'str txt)))
+        (clay-spacer)))
+
+; One label/value pair, halves meeting in the middle of its column
+(defun clay-pair (lbl val)
+    (list 'row '(w grow) (list 'h page-row-h)
+        (list 'box '(w grow) '(alignx right)
+            (list 'text (list 'font clay-f-mid) '(size 24)
+                  (list 'fg cp-accent) (cons 'str lbl)))
+        (list 'box '(w grow) '(alignx left) '(pad 6)
+            (list 'text (list 'font clay-f-mid) '(size 24)
+                  (list 'fg cp-text) (cons 'str val)))))
+
+; cols columns of (length labels)/cols pairs, filled column-first
+(defun clay-pairs (labels vals cols) {
+        (var n (length labels))
+        (var rows (/ n cols))
+        (var out nil)
+        (looprange c 0 cols {
+                (var cells nil)
+                (looprange r 0 rows {
+                        (var i (+ (* c rows) r))
+                        (setq cells (cons (clay-pair (ix labels i) (ix vals i)) cells))
+                })
+                (setq out (cons (append (list 'col '(w grow) '(h grow))
+                                        (reverse cells)) out))
+        })
+        (append (list 'row '(w grow) '(h grow) '(gap 8)) (reverse out))
+})
+
+(defun clay-nav (left mid)
+    (list 'row '(w grow) '(h 32) '(padx 8)
+        (list 'text (list 'font clay-f-mid) '(size 24)
+              (list 'fg cp-text) (cons 'str left))
+        (clay-spacer)
+        (list 'text (list 'font clay-f-small) '(size 16)
+              (list 'fg cp-accent) (cons 'str mid))
+        (clay-spacer)
+        (list 'text (list 'font clay-f-mid) '(size 24)
+              (list 'fg cp-text) (cons 'str ">"))))
+
+; --- the two arrangements --------------------------------------------------
+
+; Square: everything stacked, page grid across the bottom in two columns.
+;
+; The padding and gaps are tight because on a 480x480 panel the bands very
+; nearly fill it: the strip, a 108 px speed readout with its unit and mode,
+; the battery bar, four rows of pairs and the nav strip come to about 456 px
+; of the 480. Generous spacing overflows, and Clay overflows rather than
+; shrinking content, so the room has to be there.
+(defun clay-screen-portrait (st speed unit mode soc soc-txt labels vals nav-l nav-m)
+    (list 'col '(w grow) '(h grow) '(padx 8) '(pady 2) '(gap 2)
+        (clay-strip st)
+        (clay-speed speed unit mode)
+        (clay-batt soc soc-txt)
+        (clay-pairs labels vals 2)
+        (clay-nav nav-l nav-m)))
+
+; Wide: speed and battery on the left, the pairs beside them in two columns.
+; The split is a fraction of the width rather than a pixel count, so it holds
+; whatever the panel is. There is vertical room to spare here, so the spacing
+; can be more generous than the square arrangement's.
+(defun clay-screen-landscape (st speed unit mode soc soc-txt labels vals nav-l nav-m)
+    (list 'col '(w grow) '(h grow) '(pad 8) '(gap 6)
+        (clay-strip st)
+        (list 'row '(w grow) '(h grow) '(gap 12)
+            (list 'col (list 'w (list 'pct 0.46)) '(h grow) '(gap 6)
+                (clay-speed speed unit mode)
+                (clay-batt soc soc-txt))
+            (clay-pairs labels vals 2))
+        (clay-nav nav-l nav-m)))
+
+; A panel wider than about 4:3 has room to put the pages beside the speed.
+(defun clay-screen (st speed unit mode soc soc-txt labels vals nav-l nav-m)
+    (if (> (* 100 disp-w) (* 130 disp-h))
+        (clay-screen-landscape st speed unit mode soc soc-txt labels vals nav-l nav-m)
+        (clay-screen-portrait  st speed unit mode soc soc-txt labels vals nav-l nav-m)))
+
+@const-end

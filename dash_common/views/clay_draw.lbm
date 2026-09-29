@@ -1,0 +1,64 @@
+; Draws a clay-layout command list with the ordinary display primitives.
+;
+; One indexed16 buffer holds four 4-step colour ramps, so each palette index
+; the description used gets its own anti-aliasing gradient. Without that,
+; every colour would share indices 0..3 and text would blend towards the
+; wrong hue.
+;
+; Ramps are built from the theme colours at runtime, so the accent and text
+; settings still apply.
+
+(def clay-pal nil)      ; 16 entries, built by clay-build-palette
+
+@const-start
+
+; index in the description -> base of its ramp in the 16-entry palette
+(defun clay-ramp-base (i)
+    (cond ((= i cp-panel) 0) ((= i cp-accent) 4)
+          ((= i cp-text) 8) ((= i cp-ok) 12) (t 0)))
+
+(defun clay-build-palette () {
+        (var ramp (fn (c) (list color-bg
+                                (color-mix color-bg c 0.35)
+                                (color-mix color-bg c 0.7)
+                                c)))
+        (setq clay-pal (append (ramp (color-mix color-bg color-text 0.18))
+                        (append (ramp color-accent)
+                        (append (ramp color-text)
+                                (ramp 0x00C321)))))
+})
+
+; Draw into an existing buffer. Offsets let a caller lay out a region and
+; blit it somewhere other than the origin.
+(defun clay-draw-into (buf cmds) {
+        (loopforeach c cmds {
+                (var k (ix c 0))
+                (cond
+                    ((eq k 'rect) {
+                        (var b (clay-ramp-base (ix c 5)))
+                        (if (> (ix c 5) 0)
+                            (img-rectangle buf (ix c 1) (ix c 2) (ix c 3) (ix c 4)
+                                (+ b 3) '(filled) (list 'rounded (ix c 6))))
+                    })
+                    ((eq k 'text) {
+                        ; Clay reports the box top; ttf-text places a baseline.
+                        (var fnt (ix clay-fonts (ix c 6)))
+                        (var b (clay-ramp-base (ix c 5)))
+                        (ttf-text buf (ix c 1) (+ (ix c 2) (ttf-ascender fnt))
+                            (list 0 (+ b 1) (+ b 2) (+ b 3)) fnt (ix c 7))
+                    })
+                    (t nil))
+        })
+})
+
+; Lay out and draw a whole screen. Full frame: for a page switch, a splash or
+; a first draw. Steady-state updates should diff instead, as clay_grid does.
+(defun clay-draw-screen (desc) {
+        (if (eq clay-pal nil) (clay-build-palette))
+        (var buf (img-buffer dm-pool 'indexed16 disp-w disp-h))
+        (img-clear buf)
+        (clay-draw-into buf (clay-layout desc disp-w disp-h clay-fonts))
+        (disp-render buf 0 0 clay-pal)
+})
+
+@const-end
