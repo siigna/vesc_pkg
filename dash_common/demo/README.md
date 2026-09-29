@@ -3,12 +3,48 @@
 Renders a scripted ride on the s3 and p4 dashes to a frame sequence, then
 stitches it into an mp4 and a gif. For screenshots and demo video, off target.
 
-    ./demo.sh              frames, mp4 and gif for both boards, plus stills
-    ./demo.sh --frames     frames only
+    ./demo.sh              frames, video and stills for both boards
+    ./demo.sh --frames     frames only, no video
     FPS=15 ./demo.sh       different frame rate
+    TITLE="..." SUBTITLE="..." ./demo.sh    retitle the card
 
-Needs the same LispBM repl as `../test/run.sh` — see `../test/README.md` — and
-ffmpeg for the video. Set `REPL=` if it is not at the default path.
+Needs the same LispBM repl as `../test/run.sh` — see `../test/README.md` — plus
+ffmpeg built with libass and libfreetype, and a DejaVu Sans to render with.
+`nix-shell -p ffmpeg dejavu_fonts fontconfig` covers it. Set `REPL=` if the repl
+is not at the default path, or `FONT=` to point at another `.ttf`.
+
+## What comes out
+
+| file | what |
+|---|---|
+| `out/dash_<board>.mp4` | the panel alone, narration as a **soft subtitle track** |
+| `out/dash_<board>_demo.mp4` | title card, panel at 2x, narration burned into a bar below it |
+| `out/dash_<board>.gif` | the demo cut at half size, captions burned in |
+| `stills/<board>_<phase>.png` | one still per phase |
+
+The plain mp4 is the one to embed somewhere that has its own captions or where
+the text would be in the way; the subtitle track can simply be turned off. The
+demo cut is the one to hand someone.
+
+Captions never overlay the dash. The panel is scaled up and a bar is padded on
+underneath, and the narration sits in the bar.
+
+## Narration
+
+`narration.txt` is the single source for the captions **and** the still names,
+so the two cannot drift apart:
+
+    start_frame : still_frame : still_name : text
+
+A caption runs until the next entry starts. The frame numbers are the phase
+boundaries in `demo.lisp`, so changing a phase there means changing it here.
+
+`mkcaps.py` renders that to SubRip for the soft track and to ASS for burning in.
+It has to be ASS for the burn: libass scales `FontSize` against the script
+resolution, and a SubRip file declares none, so it assumes 288 lines and a size
+meant as 26 px comes out nearer 100 on a 1080 line canvas. The ASS file declares
+`PlayResX`/`PlayResY` equal to the real canvas, which makes the size and margin
+plain pixels.
 
 **This is not a test.** Nothing here is compared against a golden and nothing
 is asserted. `../test/` is the regression suite; this is for showing the thing

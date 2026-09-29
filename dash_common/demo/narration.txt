@@ -1,0 +1,20 @@
+# Narration for the demo video. One line per caption:
+#
+#   start_frame : still_frame : still_name : text
+#
+# The caption runs from its start frame until the next entry's start frame, so
+# these must stay in order. The still frame is the one copied into stills/ as a
+# representative shot of that phase. Frame numbers are the same ones demo.lisp
+# uses for its phases, so changing a phase there means changing it here.
+0:20:pulling-away:Pedalling away from a standstill. Assist follows crank torque and cadence.
+30:50:steady-assist:Steady. The motor is adding about twice the rider's own power.
+60:72:speed-taper:Into the speed taper. The rider keeps working; assist is pulled back.
+80:88:braking:Brake applied. Assist is cut at once, bypassing the ramp.
+95:102:walk-assist:Walk assist. Walking pace with the cranks stopped, held by a button.
+110:118:regen:Coasting downhill. The pack is taking current back.
+125:130:fan:The cooling fan is running, read back from the auxiliary output.
+135:138:kill-switch:Kill switch active. It outranks every other indicator.
+142:150:trip:Trip page: range, distance, energy and efficiency.
+160:168:session:Session page: the maxima since the last reset.
+178:186:battery:Battery page: pack state, cell voltage and the charge counters.
+196:202:live:Live page. Any four values, each cell cycled by touch.
