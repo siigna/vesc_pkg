@@ -107,6 +107,9 @@
 
 (def page-live-state (get-page-live-state))
 
+; (cell progress) of the hold last drawn, so the cell redraws as it fills.
+(def page-live-hold (list nil 0.0))
+
 ; Fixed colour, or a green to red ramp across the slot range
 (defun slot-colors (i) {
         (if (= (ix settings-slot-modes i) 0) (ix colors-slots i) {
@@ -135,6 +138,38 @@
 (defun live-cell-x (i) (+ page-x (* (mod i live-cols) live-cell-w) 8))
 (defun live-cell-y (i) (+ page-y (* (/ i live-cols) live-cell-h)))
 
+; Which live cell a screen coordinate falls in, or nil for none. The inverse of
+; live-cell-x / live-cell-y, derived from the same three numbers, so it follows
+; whatever grid the board profile produced rather than assuming a 2x2. The 8 px
+; live-cell-x adds is padding inside the cell and not a gap between cells, so it
+; is not subtracted back out here.
+;
+; Integer division truncates towards zero, so a coordinate above or left of the
+; page area would land in cell 0; both edges are tested explicitly. Below the
+; grid needs no test of its own: the nav strip starts 4 px past the last row, so
+; a press there gives a row index of live-rows and falls out.
+(defun live-cell-hit (x y) {
+        (var cx (/ (- x page-x) live-cell-w))
+        (var cy (/ (- y page-y) live-cell-h))
+        (if (or (< x page-x) (< y page-y)
+                (>= cx live-cols) (>= cy live-rows))
+            nil
+            (+ (* cy live-cols) cx))
+})
+
+; The cell currently under a finger that is being held, or nil. btn-hold-region
+; is nil unless something is held, which is what keeps this from reporting the
+; last place touched.
+(defun live-hold-cell ()
+    (if btn-hold-region (live-cell-hit touch-x touch-y) nil))
+
+; A held cell's value drifts from the text colour towards the accent colour as
+; the hold fills, which is the affordance for the long press that sends that
+; cell to the chart page. The session page fades towards the background for the
+; opposite reason -- there the hold destroys the value.
+(defun slot-hold-colors (f)
+    (colors-make-aa color-bg (color-mix color-text color-accent (clamp01 f)) 4))
+
 (defun page-live (s) {
         (var curr-state (get-page-live-state))
         (var update-state (zipwith (fn (x y) (not-eq x y)) page-live-state curr-state))
@@ -142,6 +177,18 @@
         ; A ramped slot can change colour while its text does not
         (looprange i 0 4
             (if (= (ix settings-slot-modes i) 1) (setix update-state i true)))
+
+        ; The held cell, and the one that was held a frame ago, both have to be
+        ; redrawn even when their text has not changed: one takes the hold
+        ; colour and the other has to lose it.
+        (var hold (live-hold-cell))
+        (var hold-f (if hold btn-hold-progress 0.0))
+        (if (not-eq (list hold hold-f) page-live-hold) {
+                (if (first page-live-hold)
+                    (setix update-state (first page-live-hold) true))
+                (if hold (setix update-state hold true))
+                (setq page-live-hold (list hold hold-f))
+        })
 
         (if s {
                 (setq update-state (map (fn (x) t) curr-state))
@@ -169,7 +216,8 @@
                     (img-clear valimg)
                     (ttf-text valimg 8 36 '(0 1 2 3) font-40 (ix curr-state i))
                     (disp-render valimg (live-cell-x i)
-                        (+ (live-cell-y i) live-lbl-h 2) (slot-colors i))
+                        (+ (live-cell-y i) live-lbl-h 2)
+                        (if (eq hold i) (slot-hold-colors hold-f) (slot-colors i)))
             })
         )
 

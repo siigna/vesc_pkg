@@ -118,4 +118,23 @@
         (save-active-img (str-merge "out/BOARD_page" (str-from-n p "%d") ".png"))
 })
 
+; The live page again, with a hold part way through over cell 1, which is what
+; the long press that charts that cell looks like. Pinned rather than timed: the
+; hold fraction normally comes from the input thread.
+; page-live is the first entry of page-catalog and every page is enabled
+; above, so it is index 0 here. page-index lives in main_body, which the
+; harness does not load.
+(setq page-now 0)
+(setq touch-x (+ (live-cell-x 1) 10))
+(setq touch-y (+ (live-cell-y 1) 30))
+(setq btn-hold-region (touch-region touch-x touch-y))
+(setq btn-hold-progress 0.7)
+(page-live true)
+(page-live false)
+(sleep 0.3)
+(save-active-img "out/BOARD_live_hold.png")
+
+; The cell that the hold above is over, which is the one the press would chart.
+(print (list 'BOARD 'hold-cell (live-cell-hit touch-x touch-y)))
+
 (print (list 'BOARD 'pages (length pages) 'ok))

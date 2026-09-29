@@ -97,6 +97,78 @@
         (t nil)
 ))
 
+; Index of a page in the enabled set, or nil when settings-page-mask has that
+; page switched off.
+(defun page-index (p) (list-find pages p))
+
+; Which live slots the chart can be pointed at, in cell order and without
+; duplicates. The gesture can only reach what is on the live page, so the
+; button fallback steps through the same set rather than the whole catalog.
+(defun chart-sources () {
+        (var out nil)
+        (looprange i 0 4 {
+                (var src (ix settings-slots i))
+                (if (not (list-find out src)) (setq out (cons src out)))
+        })
+        (reverse out)
+})
+
+; Point the chart at a slot-catalog source and go to the chart page. A live cell
+; already holds a catalog index, which is the same thing the chart page plots,
+; so no new mapping is needed. Written through so the choice survives a power
+; cycle.
+(defun chart-set-src (src) {
+        (var pg (page-index page-chart))
+        (if (eq pg nil)
+            (notify "Chart page off")
+            {
+                (setq settings-chart-src src)
+                (write-setting 'chart-src src)
+                (setq page-now pg)
+                (notify (str-merge "Charting " (slot-label src)))
+            })
+})
+
+; Step the chart source along the live slots. For the chart page's own buttons,
+; so the source is reachable without the gesture; stays on the chart page.
+(defun chart-step (dir) {
+        (var srcs (chart-sources))
+        (var n (length srcs))
+        (var at (list-find srcs settings-chart-src))
+        (var next (ix srcs (mod (+ (if at at 0) dir n) n)))
+        (setq settings-chart-src next)
+        (write-setting 'chart-src next)
+        (notify (slot-label next))
+})
+
+(defun chart-step-secs () {
+        (setq settings-chart-secs (if (= settings-chart-secs 10) 5 10))
+        (write-setting 'chart-secs settings-chart-secs)
+})
+
+; Long presses go through here so that a page can claim the gesture, the way
+; btn-short lets the settings and controller pages claim short ones. On the live
+; page a hold over a cell charts that cell, which is the only way to pick what
+; the chart plots by pointing at it. A hold that lands outside the cell grid, or
+; on any other page, falls through to the action stored for that region -- so
+; the session reset on a held region still works everywhere except over a live
+; cell, where the cell highlight says what the press will do instead.
+(defun btn-long (idx) {
+        (var pg (ix pages page-now))
+        ; Walk assist is not claimable. It is held rather than triggered, and
+        ; walk-requested reads the held state directly, so claiming the region
+        ; would leave the walk request running while the chart page opened.
+        (var walk (= (ix btn-actions-long idx) 13))
+        (var cell (if (and (eq pg page-live) (not walk))
+                      (live-cell-hit touch-x touch-y) nil))
+        (cond
+            (cell (chart-set-src (ix settings-slots cell)))
+            ((and (eq pg page-chart) (< touch-y nav-y) (not walk))
+                (chart-step-secs))
+            (t (btn-do-action (ix btn-actions-long idx)))
+        )
+})
+
 ; On the settings page short presses always navigate it
 (defun btn-short (idx)
     (cond
@@ -106,6 +178,15 @@
                               (setq setting-now (mod (+ setting-now 1) setting-num))))
                 ((= idx 1) (setting-update -))
                 ((= idx 2) (setting-update +))
+                (t (btn-do-action (ix btn-actions-short idx)))
+            ))
+        ; The chart page steps its source, but only for a press above the nav
+        ; strip: regions 1 and 2 are both the screen halves and the strip, and
+        ; claiming the strip too would leave no way to page off the chart.
+        ((and (eq (ix pages page-now) page-chart) (< touch-y nav-y))
+            (cond
+                ((= idx 1) (chart-step -1))
+                ((= idx 2) (chart-step 1))
                 (t (btn-do-action (ix btn-actions-short idx)))
             ))
         ; The controller settings page scrolls and adjusts the same way, but
@@ -330,10 +411,10 @@
         (def on-btn-2-pressed (fn () (btn-short 2)))
         (def on-btn-3-pressed (fn () (btn-short 3)))
 
-        (def on-btn-0-long-pressed (fn () (btn-do-action (ix btn-actions-long 0))))
-        (def on-btn-1-long-pressed (fn () (btn-do-action (ix btn-actions-long 1))))
-        (def on-btn-2-long-pressed (fn () (btn-do-action (ix btn-actions-long 2))))
-        (def on-btn-3-long-pressed (fn () (btn-do-action (ix btn-actions-long 3))))
+        (def on-btn-0-long-pressed (fn () (btn-long 0)))
+        (def on-btn-1-long-pressed (fn () (btn-long 1)))
+        (def on-btn-2-long-pressed (fn () (btn-long 2)))
+        (def on-btn-3-long-pressed (fn () (btn-long 3)))
 
         ; Repeats only make sense on the settings page, where they scroll a
         ; value; elsewhere they would fire a page change over and over.

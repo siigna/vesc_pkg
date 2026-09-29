@@ -53,10 +53,20 @@ if [ ! -s build/common/walk_fn.lisp ]; then
     exit 1
 fi
 
+# The live cell grid and its inverse, pulled out of the real view_pages so the
+# round-trip test cannot drift from what ships. Everything in the block is
+# derived at load from page-w and page-cols, so hit_test re-evaluates it once
+# per board profile.
+awk '/^\(def live-cols /,/^\}\)/' ../views/view_pages.lbm > build/common/live_geom.lisp
+if ! grep -q 'defun live-cell-hit' build/common/live_geom.lisp; then
+    echo "could not extract the live cell geometry from view_pages.lbm" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test walk_test; do
+for unit in battery_test walk_test hit_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

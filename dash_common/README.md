@@ -110,6 +110,41 @@ The source is any `slot-catalog` entry, so the chart gets its label, unit and
 formatting for free and can plot anything a live cell can. Two settings pick it:
 `chart-src` (catalog index) and `chart-secs` (5 or 10).
 
+### Picking what it plots
+
+**Hold a cell on the live page.** The value under the finger drifts towards the
+accent colour as the hold fills, and at the long-press point the chart page
+opens already plotting that cell. It is the same gesture the session page uses
+to reset, read the other way round: there the held value fades towards the
+background because the press destroys it.
+
+That works because a live cell already stores a `slot-catalog` index, which is
+exactly what the chart plots, so pointing at a cell needs no separate menu and
+no new stored setting. The 30-entry catalog is reachable by putting a source in
+a live cell first, in Settings, and then holding it.
+
+`live-cell-hit` in `view_pages.lbm` is the inverse of the `live-cell-x` /
+`live-cell-y` pair that draws the grid, derived from the same three numbers, so
+it follows whatever grid a board profile produced -- 2x2 on a square panel, one
+row of four on a wide one. `test/hit_test.lisp` checks the round trip on both
+shipped profiles and one that nothing ships.
+
+Long presses run through `btn-long`, which lets a page claim the gesture the way
+`btn-short` already lets the settings and controller pages claim short ones. A
+hold that lands outside the cell grid, or on any other page, still does whatever
+the region's stored long action says -- so a session reset bound to a held region
+keeps working everywhere except over a live cell. **Walk assist is never
+claimed**: it is held rather than triggered and `walk-requested` reads the held
+state directly, so taking the region would leave the request running while the
+chart page opened.
+
+On the chart page itself, a press on the **left or right half** steps the source
+through the sources the live cells hold, and a **hold** there toggles the window
+between 5 and 10 seconds. Only above the nav strip: regions 1 and 2 are both the
+screen halves and part of the strip, and claiming the strip too would leave no
+way to page off the chart. Both write through to eeprom, so the choice survives
+a power cycle.
+
 Samples come from `stats-thread`, which runs whatever page is showing, so the
 window is already full when the page is opened. That thread ticks at 20 Hz but
 the controller only sends at 10, so it samples every other tick: sampling faster
