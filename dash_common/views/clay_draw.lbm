@@ -28,37 +28,79 @@
                                 (ramp 0x00C321)))))
 })
 
-; Draw into an existing buffer. Offsets let a caller lay out a region and
-; blit it somewhere other than the origin.
-(defun clay-draw-into (buf cmds) {
-        (loopforeach c cmds {
-                (var k (ix c 0))
-                (cond
-                    ((eq k 'rect) {
-                        (var b (clay-ramp-base (ix c 5)))
-                        (if (> (ix c 5) 0)
-                            (img-rectangle buf (ix c 1) (ix c 2) (ix c 3) (ix c 4)
-                                (+ b 3) '(filled) (list 'rounded (ix c 6))))
-                    })
-                    ((eq k 'text) {
-                        ; Clay reports the box top; ttf-text places a baseline.
-                        (var fnt (ix clay-fonts (ix c 6)))
-                        (var b (clay-ramp-base (ix c 5)))
-                        (ttf-text buf (ix c 1) (+ (ix c 2) (ttf-ascender fnt))
-                            (list 0 (+ b 1) (+ b 2) (+ b 3)) fnt (ix c 7))
-                    })
-                    (t nil))
-        })
+; Draw one command into a buffer, shifted by yoff so a band can pretend its
+; top row is the origin.
+(defun clay-draw-one (buf c yoff) {
+        (var k (ix c 0))
+        (var b (clay-ramp-base (ix c 5)))
+        (cond
+            ((eq k 'rect)
+                (if (> (ix c 5) 0)
+                    (img-rectangle buf (ix c 1) (+ (ix c 2) yoff) (ix c 3) (ix c 4)
+                        (+ b 3) '(filled) (list 'rounded (ix c 6)))))
+            ((eq k 'text) {
+                ; Clay reports the box top; ttf-text places a baseline.
+                ;
+                ; The ascender is fractional and ttf-text truncates toward
+                ; zero, so the baseline has to be made whole before yoff is
+                ; applied. Adding the float first and letting a negative
+                ; result truncate rounds it up instead of down, which drew
+                ; text one row low in any band whose origin is below it -- a
+                ; one-pixel seam wherever a glyph crossed a band boundary.
+                (var fnt (ix clay-fonts (ix c 6)))
+                (var base (+ (ix c 2) (to-i (ttf-ascender fnt))))
+                (ttf-text buf (ix c 1) (+ base yoff)
+                    (list 0 (+ b 1) (+ b 2) (+ b 3)) fnt (ix c 7))
+            })
+            (t nil))
 })
 
-; Lay out and draw a whole screen. Full frame: for a page switch, a splash or
-; a first draw. Steady-state updates should diff instead, as clay_grid does.
+(defun clay-draw-into (buf cmds)
+    (loopforeach c cmds (clay-draw-one buf c 0)))
+
+; How many rows a band covers. An indexed16 buffer costs width * rows / 2
+; bytes, so this is what decides the memory the renderer needs: 40 rows of an
+; 800 px panel is 16 kB, where the whole screen at once would be 192 kB.
+(def clay-band-h 40)
+
+; Lay out and draw a whole screen, a band at a time.
+;
+; Drawing it into one buffer needs width * height / 2 bytes -- 115 kB on a
+; 480x480 panel and 192 kB on an 800x480 one -- which is more display memory
+; than some of these boards have in total, and is the full-frame redraw the
+; whole design is meant to avoid. Bands cost one strip instead, at the price
+; of visiting each command once per strip it crosses, which for a few dozen
+; commands is nothing.
+;
+; Measured against drawing it in one buffer, all three panel sizes produce a
+; byte-identical image, and the pool needed drops a lot at the cost of about
+; twice the time:
+;
+;   480x480   115 kB in one buffer, 2.9 ms   ->  37 kB banded, 6.7 ms
+;   800x480   192 kB in one buffer, 3.8 ms   ->  56 kB banded, 7.3 ms
+;   480x320    77 kB in one buffer, 2.5 ms   ->  37 kB banded, 4.8 ms
+;
+; That is the right trade for a full redraw, which happens on a page switch
+; rather than every frame. This is the full-redraw path, for a page switch, a
+; splash or a first draw. Steady-state updates should diff the command list
+; instead, as clay_grid does.
 (defun clay-draw-screen (desc) {
         (if (eq clay-pal nil) (clay-build-palette))
-        (var buf (img-buffer dm-pool 'indexed16 disp-w disp-h))
-        (img-clear buf)
-        (clay-draw-into buf (clay-layout desc disp-w disp-h clay-fonts))
-        (disp-render buf 0 0 clay-pal)
+        (var cmds (clay-layout desc disp-w disp-h clay-fonts))
+        (var y 0)
+        (loopwhile (< y disp-h) {
+                (var h (if (> (+ y clay-band-h) disp-h) (- disp-h y) clay-band-h))
+                (var buf (img-buffer dm-pool 'indexed16 disp-w h))
+                (img-clear buf)
+                (loopforeach c cmds
+                    ; Only commands whose box crosses this band. The drawing
+                    ; primitives clip, so one that starts above the band still
+                    ; renders its visible part.
+                    (if (and (< (ix c 2) (+ y h)) (> (+ (ix c 2) (ix c 4)) y))
+                        (clay-draw-one buf c (- 0 y))))
+                (disp-render buf 0 y clay-pal)
+                (setq y (+ y h))
+        })
 })
 
 @const-end

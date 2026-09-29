@@ -80,7 +80,8 @@
                     ((eq k 'text) {
                         ; Clay gives the box top; ttf-text places a baseline.
                         (var fnt (ix clay-fonts (ix c 6)))
-                        (ttf-text buf (ix c 1) (+ (ix c 2) (ttf-ascender fnt))
+                        (ttf-text buf (ix c 1)
+                            (+ (ix c 2) (to-i (ttf-ascender fnt)))
                             '(0 1 2 3) fnt (ix c 7))
                     })
                     (t nil))
@@ -134,9 +135,13 @@
         (if (and (> w 0) (> h 0)) {
                 (var buf (img-buffer dm-pool 'indexed4 w h))
                 (img-clear buf)
+                ; Whole-number baseline before the offset: ttf-text
+                ; truncates toward zero, so a fractional ascender plus a
+                ; negative offset rounds the wrong way and shifts the glyph a
+                ; row. See the note in clay_draw.lbm.
                 (var fnt (ix clay-fonts (ix new 6)))
-                (ttf-text buf (- (ix new 1) x)
-                          (+ (- (ix new 2) y) (ttf-ascender fnt))
+                (var base (+ (ix new 2) (to-i (ttf-ascender fnt))))
+                (ttf-text buf (- (ix new 1) x) (- base y)
                           '(0 1 2 3) fnt (ix new 7))
                 (disp-render buf (+ page-x x) (+ page-y y) colors-text-aa)
         })
