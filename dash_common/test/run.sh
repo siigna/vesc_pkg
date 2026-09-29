@@ -77,10 +77,19 @@ if ! grep -q 'defun shade-cell-hit' build/common/shade_geom.lisp; then
     exit 1
 fi
 
+# The signal request bitfield, from the start of its own section to the last
+# of the three shown-state helpers at the end of the file.
+sed -n '/^; --- Signal requests /,/^; --- end signal requests /p' \
+    ../lib/vehicle-state.lisp > build/common/signal_fn.lisp
+if ! grep -q 'defun sig-byte' build/common/signal_fn.lisp; then
+    echo "could not extract the signal request helpers from vehicle-state.lisp" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test walk_test hit_test smooth_test; do
+for unit in battery_test walk_test hit_test smooth_test signal_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

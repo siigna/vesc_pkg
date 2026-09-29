@@ -166,20 +166,62 @@ then produce cells for would otherwise take the page down instead of showing
 the rest. State is rounded to 10 mV, since the readings jitter in the last
 digit and an unrounded state redraws the page every frame.
 
-## What the dash cannot switch
+## Signal requests
 
-Worth being explicit, because the quick shade makes the gap obvious. From the
-dash, over SID 201 and 250, it can set the drive mode, the lights, walk assist,
-cruise, logging and the controller config. It **cannot** switch the turn
-signals, the high beam, the horn or the kill switch: those are inputs on the
-controller side, owned by `vl_bike_39p`, and the dash only receives their state
-in SID 30 and 31.
+Hazard, the indicators, the high beam and the horn are **requests**, in byte 3
+of SID 201:
 
-The obstacle is outputs, not protocol -- SID 201 has five spare bytes. A
-controller exposes exactly **two** script-drivable outputs, `set-aux` ports 1
-and 2, and `dash_esc` drives both from the lights by default. Anything more needs
-either free GPIO reachable from LispBM on the specific hardware or a second
-node on the bus that owns the switches.
+| bit | |
+|---|---|
+| 1 | hazard |
+| 2 | indicate left |
+| 4 | indicate right |
+| 8 | high beam |
+| 16 | horn |
+
+Nothing in the VESC ecosystem acts on them today, and the dash sends them
+anyway. A controller exposes exactly **two** script-drivable outputs, `set-aux`
+ports 1 and 2, and `dash_esc` drives both from the lights, so there is nothing
+left for a controller-side script to switch. This is for a **second node on the
+bus that owns the switch gear** and has GPIO to spare -- an rmcore, whose
+shipped `demo_scooter.lbm` already reads the light bit out of this same frame
+and drives a headlight GPIO with it. The cost of sending it regardless is one
+byte of a frame that was already going out every 100 ms.
+
+Two rules are worth knowing, because neither is visible in the bit values. The
+**two indicators cancel each other**: a bike that lit one while the other was
+on would be lying about which way it is going, so asking for both is what
+hazard is for. And the **horn is never latched** -- a latched horn is a stuck
+horn. It is set while a button bound to it is held, the way walk assist is, or
+for `sig-horn-blip-s` after a press on the quick shade, which cannot hold
+anything. `btn-long` refuses to claim a region bound to either of those for the
+chart gesture, for the same reason.
+
+None of it is persisted. An indicator that came back on after a power cycle
+would be surprising, and on a road bike worse than that.
+
+**The status strip shows the request when nothing reports.** `sig-l-shown`,
+`sig-r-shown` and `sig-beam-shown` return the values received in SID 30 while a
+bike-controls node has sent one within `sig-rx-timeout`, and fall back to the
+request otherwise -- which is the only feedback a rider gets on a bike where
+the display is the only thing asking. Hazard lights both arrows either way.
+`test/render_pages.lisp` pins `sig-reported` for the goldens, the way it pins
+the blink, and renders the fallback case separately.
+
+### Still not switchable
+
+The **kill switch** stays an input: `get-kill-sw` reads it and `dash_esc`
+reports it, and gating a motor from a display over CAN would be a worse idea
+than the wire it replaces.
+
+On the display hardware itself, driving outputs directly is a P4-only idea. The
+S3's RGB565 parallel bus takes 16 data and 4 control pins plus 3 for register
+setup, and its octal PSRAM reserves GPIO 26-37, which leaves **GPIO 4** and the
+two USB pins. The P4 reaches its panel over MIPI-DSI, which uses dedicated
+lanes rather than GPIO, so it claims 18 pins of about 55. Either way
+`utils_gpio_is_valid` only checks the SoC's pin mask, so LispBM will happily
+drive a display data pin and take the panel down -- and a pin being free in the
+firmware says nothing about it being broken out on the board.
 
 `set-aux` on port 1 also sets `m_out_aux_mode` to `OUT_AUX_MODE_UNUSED` in the
 running configuration, which is why `dash_esc` 2.6 applies the light command on

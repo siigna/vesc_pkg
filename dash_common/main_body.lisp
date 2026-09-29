@@ -61,6 +61,18 @@
              (>= btn-hold-progress 1.0))
 })
 
+; True while a button whose long action is the horn is held past the long-press
+; point. Same shape as walk-requested and for the same reason: the horn is
+; momentary, so it has to be derived from the held state rather than from
+; btn-do-action, which fires once. A press on the quick shade cannot hold
+; anything and blips instead.
+(defun horn-held () {
+        (var idx btn-hold-region)
+        (and idx
+             (= (ix btn-actions-long idx) 21)
+             (>= btn-hold-progress 1.0))
+})
+
 ; conf-nudge stays here rather than in the library because it
 ; reports through notify, which is part of the main loop.
 (defun conf-nudge (dir) {
@@ -106,6 +118,16 @@
         ; it and it does not cost a page slot; pressing it again closes it, as
         ; does a swipe up.
         ((= a 16) (setq page-now (if (= page-now (+ page-num 1)) 0 (+ page-num 1))))
+
+        ; Signal requests, carried in byte 3 of SID 201 for a bike-controls
+        ; node to act on. 17 to 20 latch; 21 is the horn, which is momentary,
+        ; so a press blips it and a held button asserts it for as long as it is
+        ; down -- see horn-held, which the transmit thread reads directly.
+        ((= a 17) (sig-toggle sig-hazard))
+        ((= a 18) (sig-toggle sig-left))
+        ((= a 19) (sig-toggle sig-right))
+        ((= a 20) (sig-toggle sig-beam))
+        ((= a 21) (sig-horn-blip))
         (t nil)
 ))
 
@@ -167,10 +189,11 @@
 ; cell, where the cell highlight says what the press will do instead.
 (defun btn-long (idx) {
         (var pg (ix pages page-now))
-        ; Walk assist is not claimable. It is held rather than triggered, and
-        ; walk-requested reads the held state directly, so claiming the region
-        ; would leave the walk request running while the chart page opened.
-        (var walk (= (ix btn-actions-long idx) 13))
+        ; Walk assist and the horn are not claimable. Both are held rather than
+        ; triggered and both read the held state directly, so claiming the
+        ; region would leave the request running while the chart page opened.
+        (var a-long (ix btn-actions-long idx))
+        (var walk (or (= a-long 13) (= a-long 21)))
         (var cell (if (and (eq pg page-live) (not walk))
                       (live-cell-hit touch-x touch-y) nil))
         (cond

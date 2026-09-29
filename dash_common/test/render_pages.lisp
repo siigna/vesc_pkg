@@ -40,6 +40,15 @@
 (def blink-on-live blink-on)
 (defun blink-on () true)
 
+; The strip shows the signals a bike-controls node reports, and falls back to
+; what the display asked for when no such node is on the bus. Which of those
+; applies is decided by how long ago the last SID 30 arrived, so it is pinned
+; for the same reason the blink is: a golden has to be reproducible, and the
+; run takes longer than the timeout. The fallback gets its own render further
+; down with this pinned the other way.
+(def sig-reported-live sig-reported)
+(defun sig-reported () true)
+
 ; The session page's first field is uptime, which makes the render differ
 ; every run. Pin that one element and leave the rest of the page live, rather
 ; than dropping the page from the comparison. secs-since is a builtin and
@@ -161,6 +170,22 @@
 
 ; The cell that the hold above is over, which is the one the press would chart.
 (print (list 'BOARD 'hold-cell (live-cell-hit touch-x touch-y)))
+
+; The status strip with no bike-controls node on the bus, which is what a bike
+; whose display is the only thing asking looks like. The indicators and the
+; beam then show the request rather than a reported state, so this covers the
+; fallback the pinned sig-reported above hides.
+(defun sig-reported () false)
+(setq sig-req (bitwise-or sig-hazard sig-beam))
+(setq view-force-static true)
+(view-static-frame)
+(sleep 0.3)
+(save-active-img "out/BOARD_sig_request.png")
+(defun sig-reported () true)
+(setq sig-req 0)
+(setq view-force-static true)
+(view-static-frame)
+(sleep 0.3)
 
 ; The live page once more under the Light theme, which is the only row with a
 ; pale background and so the one that would expose anything still assuming a

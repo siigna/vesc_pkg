@@ -80,6 +80,11 @@
                     (def indicate-l-on indicate-l)
                     (def indicate-r-on indicate-r)
 
+                    ; A bike-controls node is on the bus and reporting, so the
+                    ; strip shows what the signals are doing rather than what
+                    ; this display asked for.
+                    (setq sig-rx-last (systime))
+
                     (setq rx-cnt-can (+ rx-cnt-can 1))
             })
             ((= id 31) {
@@ -217,8 +222,14 @@
                 ; Byte 2 is the walk assist request. This frame goes out every
                 ; 100 ms, well inside the half second the controller allows
                 ; before it expires the request.
+                ; Byte 3 is the signal request bitfield: hazard, left, right,
+                ; high beam, horn. Sent whether or not anything on the bus acts
+                ; on it, which costs one byte of a frame that was going out
+                ; anyway. The horn bit is momentary, so it is computed here
+                ; rather than latched.
                 (can-send-sid 201 (list drive-mode (if light-on 1 0)
-                        (if (walk-requested) 1 0) 0 0 0 0 0))
+                        (if (walk-requested) 1 0) (sig-byte (horn-held))
+                        0 0 0 0))
 
                 (var buf (bufcreate 8))
                 (bufset-i8 buf 0 (read-setting 'whl-active))

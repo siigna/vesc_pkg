@@ -79,9 +79,15 @@
 (defun view-static-state () (list
         ; The blink phase is part of the state, so the pill toggles through the
         ; ordinary redraw path rather than needing a timer of its own.
-        (and indicate-l-on (blink-on))      ; 0
-        (and indicate-r-on (blink-on))      ; 1
-        highbeam-on                         ; 2
+        ; sig-*-shown, not the received values: with a bike-controls node on the
+        ; bus these are what it reports, and without one they are what this
+        ; display has asked for in byte 3 of SID 201 -- which is the only
+        ; feedback a rider gets on a bike where the display is the only thing
+        ; asking. Either way the blink phase is part of the state, so the pill
+        ; toggles through the ordinary redraw path rather than needing a timer.
+        (and (sig-l-shown) (blink-on))      ; 0
+        (and (sig-r-shown) (blink-on))      ; 1
+        (sig-beam-shown)                    ; 2
         kickstand-down                      ; 3
         drive-mode                          ; 4
         cruise-control-active               ; 5
@@ -170,7 +176,7 @@
                     ; High beam shows as the word, not only as the colour. The
                     ; config flag is for hardware whose single light output is
                     ; the high beam, where there is no separate signal.
-                    (pill (if (or highbeam-on (and light-on light-on-is-highbeam))
+                    (pill (if (or (ix state-last 2) (and light-on light-on-is-highbeam))
                               "HIGH" "LIGHT")
                         68 pill-y 66 pill-h
                         (or light-on (ix state-last 2))

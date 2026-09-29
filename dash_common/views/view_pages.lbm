@@ -877,6 +877,8 @@
         ((= a 7) "DIM")    ((= a 8) "CRUISE") ((= a 9) "LOG")
         ((= a 12) "RESET") ((= a 14) "SAVE")  ((= a 15) "REVERT")
         ((= a 16) "CLOSE")
+        ((= a 17) "HAZARD") ((= a 18) "LEFT") ((= a 19) "RIGHT")
+        ((= a 20) "BEAM")   ((= a 21) "HORN")
         (t "")
 ))
 
@@ -890,6 +892,13 @@
         ((= a 8) (if cruise-control-active "on" "off"))
         ((or (= a 14) (= a 15)) (if conf-dirty "unsaved" "saved"))
         ((= a 12) "session")
+        ; The request, not the reported state: this says what the button did,
+        ; and the status strip is where what the bike is doing belongs.
+        ((= a 17) (if (sig-on sig-hazard) "on" "off"))
+        ((= a 18) (if (sig-on sig-left) "on" "off"))
+        ((= a 19) (if (sig-on sig-right) "on" "off"))
+        ((= a 20) (if (sig-on sig-beam) "high" "low"))
+        ((= a 21) "press")
         (t "")
 ))
 
@@ -899,6 +908,10 @@
         ((= a 6) light-on)
         ((= a 8) cruise-control-active)
         ((or (= a 14) (= a 15)) conf-dirty)
+        ((or (= a 17) (= a 18) (= a 19) (= a 20))
+            (sig-on (cond ((= a 17) sig-hazard) ((= a 18) sig-left)
+                          ((= a 19) sig-right) (t sig-beam))))
+        ((= a 21) (sig-horn-blipping))
         (t false)
 ))
 
@@ -908,6 +921,7 @@
 
 (defun get-page-shade-state () (list
         drive-mode light-on cruise-control-active conf-dirty
+        sig-req (sig-horn-blipping)
 ))
 
 (def page-shade-state (get-page-shade-state))

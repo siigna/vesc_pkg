@@ -243,9 +243,9 @@
         ; quietly vanishes.
         ; Upper bound is the last action in btn-do-action. Raise it when actions
         ; are added, or the new one cannot be selected at all.
-        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
+        (setq btn-actions-short (map (fn (n) (setting-clamp (read-setting n) 0 21 0))
                 '(btn0-short btn1-short btn2-short btn3-short)))
-        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
+        (setq btn-actions-long (map (fn (n) (setting-clamp (read-setting n) 0 21 0))
                 '(btn0-long btn1-long btn2-long btn3-long)))
 
         (setq settings-esc-mode (setting-clamp (read-setting 'esc-mode) 0 2 0))
@@ -276,7 +276,7 @@
 
         ; Same bound as the button actions, for the same reason: an id past the
         ; end of btn-do-action clamps to 0 and the cell quietly goes blank.
-        (setq settings-shade (map (fn (n) (setting-clamp (read-setting n) 0 16 0))
+        (setq settings-shade (map (fn (n) (setting-clamp (read-setting n) 0 21 0))
                 '(shade-0 shade-1 shade-2 shade-3 shade-4 shade-5)))
 
         (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))

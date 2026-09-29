@@ -34,12 +34,15 @@ Item {
         "Drive mode up", "Drive mode down", "Lights",
         "Cruise control", "Toggle logging", "Reset session (hold)",
         "Walk assist (hold)", "Save controller config",
-        "Revert controller config", "Quick shade"
+        "Revert controller config", "Quick shade",
+        "Hazard", "Indicate left", "Indicate right", "High beam",
+        "Horn (hold)"
     ]
     // Shared codes across the dashes. 7 (backlight) and 11 (sleep) are left
     // out because this board has neither, so the dropdown index is mapped
     // rather than used directly.
-    property var actionCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16]
+    property var actionCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16,
+                               17, 18, 19, 20, 21]
 
     // The quick shade cannot hold anything, so its cells offer only the
     // actions a tap can do.
@@ -47,9 +50,12 @@ Item {
         "Empty", "Next page", "Previous page", "Settings page",
         "Drive mode up", "Drive mode down", "Lights",
         "Cruise control", "Toggle logging", "Save controller config",
-        "Revert controller config", "Close"
+        "Revert controller config", "Close",
+        "Hazard", "Indicate left", "Indicate right", "High beam",
+        "Horn (blip)"
     ]
-    property var shadeCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 14, 15, 16]
+    property var shadeCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 14, 15, 16,
+                              17, 18, 19, 20, 21]
 
     function shadeIndex(code) {
         var ix = shadeCodes.indexOf(code)
@@ -1025,7 +1031,11 @@ Item {
                     color: Utility.getAppHexColor("lightText")
                     text: "Swipe down on any page for the quick shade, which is " +
                           "six buttons and the way to reach a control that has " +
-                          "no region left to bind. Swipe up to close it."
+                          "no region left to bind. Swipe up to close it. " +
+                          "Hazard, the indicators, the high beam and the horn go " +
+                          "out as a request on the CAN bus and need a node that " +
+                          "owns the switch gear to act on them; nothing happens " +
+                          "without one."
                     font.pointSize: 8
                 }
 
