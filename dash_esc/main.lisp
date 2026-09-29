@@ -69,6 +69,12 @@
     0xd0 0xe9 0x00 0x10 0x00 0x22 0x98 0x47 0xd4 0xf8 0x8c 0x00 0xed 0xe7 0x00 0xbf 0x00 0xf8 0x00 0x10
 ])
 
+; The PAS frames pack unsigned values, and a negative or oversized one would
+; wrap rather than saturate, so they are clamped on the way in.
+(defun clampu16 (x) (let ((v (round x))) (cond ((< v 0) 0) ((> v 65535) 65535) (t v))))
+(defun clamp01 (x scale) (let ((v (round (* x scale))))
+        (cond ((< v 0) 0) ((> v 255) 255) (t v))))
+
 (defun set-profile (i-min i-max s-min s-max) {
         ; Every drive-mode frame from the display lands here, ten times a
         ; second. Neutral holds the throttle shut with a max scale of 0, so the
@@ -774,6 +780,14 @@
 
         (var buf-can (array-create 8))
 
+        ; The PAS getters beyond the pedal RPM arrived in 7.01. Probed once
+        ; rather than per frame, and the dash shows "no data" when they are
+        ; missing rather than a page of zeros.
+        (var pas-ok (match (trap (app-pas-get-torque))
+                ((exit-ok (? a)) true)
+                (_ false)
+        ))
+
         (loopwhile-thd ("Send CAN" 150) t {
                 (bufclear buf-can)
                 (bufset-i16 buf-can 0 (* (get-batt) 1000))
@@ -836,7 +850,24 @@
                 (bufset-u8 buf-can 1 drive-mode)
                 (bufset-u8 buf-can 2 (if profile-suspend 1 0))
                 (bufset-u8 buf-can 3 (if motor-config-bad 1 0))
+                ; Bytes 4 and 5 were spare, and PAS status and output need one
+                ; byte each, so they ride along rather than taking a frame.
+                (if pas-ok {
+                        (bufset-u8 buf-can 4 (app-pas-get-flags))
+                        (bufset-u8 buf-can 5 (clamp01 (app-pas-get-output) 200))
+                })
                 (can-send-sid 25 buf-can)
+
+                ; PAS values. Only sent when the firmware provides them, so a
+                ; dash on an older controller sees nothing and says so.
+                (if pas-ok {
+                        (bufclear buf-can)
+                        (bufset-u16 buf-can 0 (clampu16 (* (app-pas-get-rpm) 10.0)))
+                        (bufset-u16 buf-can 2 (clampu16 (* (app-pas-get-torque) 10.0)))
+                        (bufset-u16 buf-can 4 (clampu16 (app-pas-get-rider-power)))
+                        (bufset-u16 buf-can 6 (clampu16 (app-pas-get-assist-power)))
+                        (can-send-sid 26 buf-can)
+                })
 
                 (sleep 0.1)
         })

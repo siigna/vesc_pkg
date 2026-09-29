@@ -399,8 +399,70 @@
         (setq page-settings-state curr-state)
 })
 
+; --- PAS page: what the rider is contributing and what the motor adds -------
+
+; Rounded so that the page only redraws when a displayed digit changes, rather
+; than on every sample of a noisy torque signal.
+(defun get-page-pas-state () (list
+        (round stats-pas-cadence)                    ; 0 Cadence
+        (round-x stats-pas-torque 0.1)               ; 1 Crank torque
+        (round stats-pas-rider-w)                    ; 2 Rider power
+        (round stats-pas-assist-w)                   ; 3 Assist power
+        (round-x (slot-value 29) 0.1)                ; 4 Assist multiple
+        (round (* stats-pas-output 100.0))           ; 5 Output
+        (round (u-speed stats-kmh))                  ; 6 Speed
+        stats-pas-flags                              ; 7 Status
+))
+
+(def page-pas-state (get-page-pas-state))
+
+; The flag bits are the ones app_pas_get_flags reports. Only the most
+; significant one is shown, since there is a single field for it, and the order
+; here is worst first.
+(defun pas-status-str (flags)
+    (cond
+        ((not stats-pas-rx) "no data")
+        ((!= 0 (bitwise-and flags 0x10)) "no pins")
+        ((!= 0 (bitwise-and flags 0x02)) "bad ch")
+        ((!= 0 (bitwise-and flags 0x04)) "bad brk")
+        ((!= 0 (bitwise-and flags 0x20)) "bad sens")
+        ((!= 0 (bitwise-and flags 0x40)) "no trq hw")
+        ((!= 0 (bitwise-and flags 0x01)) "clipped")
+        ((!= 0 (bitwise-and flags 0x08)) "brake")
+        ((!= 0 (bitwise-and flags 0x80)) "sp limit")
+        (t "ok")
+))
+
+(defun page-pas (s) {
+        (var curr-state (get-page-pas-state))
+        (var update-state (zipwith (fn (x y) (not-eq x y)) page-pas-state curr-state))
+
+        (if s {
+                (setq update-state (map (fn (x) t) curr-state))
+                (setq page-resources (list
+                        (cons 'val-img (img-buffer dm-pool 'indexed4 col-val-w row-h))
+                ))
+                (page-clear)
+                (grid-labels (list "Cadence" "Crank Trq" "Rider" "Assist"
+                                   "Assist x" "Output" "Speed" "Status"))
+        })
+
+        (grid-values update-state (list
+            (str-from-n (ix curr-state 0) "%.0f")
+            (str-from-n (ix curr-state 1) "%.1f")
+            (str-from-n (ix curr-state 2) "%.0f")
+            (str-from-n (ix curr-state 3) "%.0f")
+            (str-from-n (ix curr-state 4) "%.1f")
+            (str-from-n (ix curr-state 5) "%.0f")
+            (str-from-n (ix curr-state 6) "%.0f")
+            (pas-status-str (ix curr-state 7))
+        ))
+
+        (setq page-pas-state curr-state)
+})
+
 ; Index order is stored in settings-page-mask, so only append here.
-(def page-catalog (list page-live page-trip page-session page-batt))
+(def page-catalog (list page-live page-trip page-session page-batt page-pas))
 
 (def pages (append page-catalog (list page-settings)))
 

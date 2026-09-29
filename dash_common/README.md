@@ -34,6 +34,29 @@ too far to be worth folding in.
 Plus `lib/input.lisp` (buttons and touch regions differ per board), the
 fonts, and three functions: `board-disp-init`, `board-touch-init`, `bl-set`.
 
+## PAS
+
+There is a PAS page showing crank cadence, crank torque, rider power, motor
+assist power, the assist multiple, the PAS output, speed and a status word. The
+same values are also in `slot-catalog`, so they can be put in any of the four
+configurable slots on the live page instead.
+
+The page is **off in the default page mask**, because most vehicles have no
+pedals. Enable it in the settings page, bit 4 of the page mask.
+
+The data comes from `dash_esc` over two CAN frames: SID 26 carries cadence,
+torque and the two powers, and the two spare bytes of SID 25 carry the status
+flags and the output. `dash_esc` probes for the PAS getters once at startup,
+since everything beyond the pedal RPM needs ESC firmware 7.01 or newer, and
+sends nothing when they are absent. The page then shows `no data` rather than a
+screen of zeros.
+
+The status word reports the worst active condition, in this order: `no data`,
+`no pins`, `bad ch`, `bad brk`, `bad sens`, `no trq hw`, `clipped`, `brake`,
+`sp limit`, `ok`. Those map to the bits `app-pas-get-flags` returns; `clipped`
+in particular means the torque sensor is reading at or above the ADC reference,
+so torque above that point is not being measured at all.
+
 ## Importing
 
 **Every `import` has to be in the board's `main.lisp`.** vesc_tool packs

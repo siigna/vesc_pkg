@@ -56,6 +56,20 @@
 (def light-on true) (def cruise-control-active true)
 (def cruise-control-speed 40.0)
 
+; The PAS page is off in the default page mask, since most vehicles have no
+; pedals, so the test enables every page in order to render it. This has to
+; happen before the static strip is drawn: the strip shows one dot per page, so
+; changing the page count afterwards would alter the strip part way through the
+; run and every page captured after that point would differ.
+(setq settings-page-mask 0x1F)
+(settings-apply-pages)
+
+; Plausible PAS values, so the page shows something rather than zeros.
+(def stats-pas-rx true)
+(def stats-pas-cadence 68.0) (def stats-pas-torque 21.5)
+(def stats-pas-rider-w 153) (def stats-pas-assist-w 298)
+(def stats-pas-output 0.42) (def stats-pas-flags 0)
+
 (view-static-frame)
 (spawn view-static-thread)
 (sleep 0.6)

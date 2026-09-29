@@ -22,6 +22,16 @@
 ; ID24
 (def stats-vin 0)
 (def stats-odom 0.0)
+; ID25 spare bytes and ID26. stats-pas-rx stays false on a controller running a
+; firmware without the PAS getters, so the page can say so rather than showing
+; a screen of zeros.
+(def stats-pas-flags 0)
+(def stats-pas-output 0.0)
+(def stats-pas-cadence 0.0)
+(def stats-pas-torque 0.0)
+(def stats-pas-rider-w 0)
+(def stats-pas-assist-w 0)
+(def stats-pas-rx false)
 
 ; Computed Statistics (resettable)
 (def stats-reset-now nil)
@@ -181,6 +191,11 @@
         ("SOC Volts"  "%")
         ("SOC Count"  "%")
         ("SOC Model"  "%")
+        ("Cadence"    "rpm")
+        ("Crank Trq"  "Nm")
+        ("Rider"      "W")
+        ("Assist"     "W")
+        ("Assist x"   "")
 ))
 
 (defun slot-value (i)
@@ -211,7 +226,19 @@
         ; config-soc-source is pointed at one of them.
         ((= i 22) (* 100.0 (batt-voltage-soc stats-vin)))
         ((= i 23) (* 100.0 (batt-coulomb-soc stats-battery-ah)))
-        (t (* 100.0 (batt-model-soc)))
+        ((= i 24) (* 100.0 (batt-model-soc)))
+        ; PAS
+        ((= i 25) stats-pas-cadence)
+        ((= i 26) stats-pas-torque)
+        ((= i 27) stats-pas-rider-w)
+        ((= i 28) stats-pas-assist-w)
+        ; How many times the rider's own effort the motor is adding. Guarded
+        ; because rider power is near zero whenever the cranks are barely
+        ; turning, which would otherwise divide to something meaningless.
+        ((= i 29) (if (> stats-pas-rider-w 5)
+                      (/ (to-float stats-pas-assist-w) stats-pas-rider-w)
+                      0.0))
+        (t 0.0)
 ))
 
 ; Units that follow the unit setting rather than being fixed.

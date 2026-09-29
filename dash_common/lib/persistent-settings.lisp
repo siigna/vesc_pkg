@@ -203,7 +203,10 @@
         (setq settings-bl-dim (setting-clamp (read-setting 'bl-dim) 0 1 bl-lvl-dim))
         ; view_static labels only 0-4, dash_esc matches only 0-4.
         (setq drive-mode-num (setting-clamp (read-setting 'drive-modes) 1 5 5))
-        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0xF 0xF))
+        ; The PAS page is bit 4 and is off in the default mask, since most
+        ; vehicles have no pedals. Raise the upper bound when pages are added or
+        ; the new page cannot be enabled at all.
+        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x1F 0xF))
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x7FF 0xF))
 
         ; The upper bound is the highest action id in btn-do-action. Raise it
@@ -223,7 +226,7 @@
         (setq color-text (setting-clamp (read-setting 'col-text) 0 0xFFFFFF 0xfbfcfc))
         ; Upper bound is the last index of slot-catalog. Raise it when the
         ; catalog grows, or the new sources cannot be selected at all.
-        (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 24 0))
+        (setq settings-slots (map (fn (n) (setting-clamp (read-setting n) 0 29 0))
                 '(slot-0 slot-1 slot-2 slot-3)))
         (setq settings-slot-cols (map (fn (n) (setting-clamp (read-setting n) 0 0xFFFFFF 0xfbfcfc))
                 '(slot-col-0 slot-col-1 slot-col-2 slot-col-3)))

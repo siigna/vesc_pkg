@@ -6,7 +6,7 @@
 
 (defun proc-sid (id data) {
         ; Any of these means dash_esc is alive, watched by standalone-thread
-        (if (or (and (>= id 20) (<= id 24)) (= id 30) (= id 31))
+        (if (or (and (>= id 20) (<= id 26)) (= id 30) (= id 31))
             (setq dash-esc-last (systime))
         )
 
@@ -142,6 +142,20 @@
 
                     (setq service-mode (= (bufget-u8 data 2) 1))
                     (setq motor-bad (= (bufget-u8 data 3) 1))
+
+                    ; Bytes 4 and 5 were spare. PAS status and output go here
+                    ; rather than in a frame of their own, since one byte each
+                    ; is all they need.
+                    (def stats-pas-flags (bufget-u8 data 4))
+                    (def stats-pas-output (/ (bufget-u8 data 5) 200.0))
+            })
+            ((= id 26) {
+                    (def stats-pas-cadence (/ (bufget-u16 data 0) 10.0))
+                    (def stats-pas-torque (/ (bufget-u16 data 2) 10.0))
+                    (def stats-pas-rider-w (bufget-u16 data 4))
+                    (def stats-pas-assist-w (bufget-u16 data 6))
+                    (def stats-pas-rx true)
+                    (setq rx-cnt-can (+ rx-cnt-can 1))
             })
 
 
