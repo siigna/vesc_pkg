@@ -635,7 +635,11 @@
 
 ; The trace, autoscaled to what is in the window. A flat line is centred rather
 ; than filling the height, which is what dividing by a zero range would do.
-(defun chart-draw (img w h n) {
+; defunret, not defun: the early exit needs it. As a plain defun this threw
+; variable_not_bound instead of returning, and it threw on the path that runs
+; when the window holds fewer than two samples -- which is every frame of the
+; chart page after a boot or a session reset, before the ring has filled.
+(defunret chart-draw (img w h n) {
         (if (< n 2) (return nil))
 
         (var lo (chart-at 0))

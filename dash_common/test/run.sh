@@ -94,6 +94,14 @@ if ! grep -q 'defun pin-submit' build/common/pin_fn.lisp; then
     exit 1
 fi
 
+# Static checks first: they need nothing built and they catch the class of
+# mistake the renders cannot, which is a branch that throws when it is reached
+# rather than one that draws the wrong thing.
+if ! python3 lint.py ../../dash_common ../../dash_s3 ../../dash_p4; then
+    echo "lint failed" >&2
+    exit 1
+fi
+
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.

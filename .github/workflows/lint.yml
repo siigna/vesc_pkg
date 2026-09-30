@@ -1,0 +1,22 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lisp:
+    name: LispBM checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pure Python, no dependencies, so this needs nothing built. The render
+      # tests are not here: they need the LispBM repl from the vesc_express
+      # tree, which is a different repository.
+      - name: Lint the dash sources
+        run: dash_common/test/lint.py dash_common dash_s3 dash_p4

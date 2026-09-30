@@ -71,3 +71,32 @@ half-painted frame looks like.
 `view-static-thread` now calls the same step in its loop, so the shipping path
 and the harness path are the same code.
 
+## lint.py
+
+LispBM has no static checking of its own. A file loads, and an undefined symbol
+or a misplaced `return` becomes a runtime error the first time that branch runs
+-- which on a display means a thread dies mid-ride, and the branch that kills
+it may be the one that only runs when something has already gone wrong.
+
+    ./lint.py ../../dash_common ../../dash_s3 ../../dash_p4
+
+Every check exists because the mistake it catches was actually made in this
+package, and in each case the render tests did not catch it: they exercise the
+drawing, not the paths that only run on a real vehicle.
+
+| check | what it caught |
+|---|---|
+| `return` in a plain `defun` | the PIN keypad threw on every key press during a lockout; `chart-draw` threw on every frame of the chart page before the ring had two samples |
+| `=` or `!=` on a string | the quick shade took the page down the first time a button had no state line |
+| `setting-flag` on a `b` cell | `pin-en` took `settings-load` down on the first load |
+| unbalanced parens | not yet, but it is free |
+
+The first of those is the one that earns the tool: it found a second,
+pre-existing instance immediately, in code that had already shipped and passed
+every golden.
+
+`--unbound` additionally reports names called but bound nowhere in the package,
+which is the `shade-showing`-from-a-view and `light-on-default`-from-a-library
+class of mistake. It is off by default because the builtin list it checks
+against is hand-maintained, so a name missing from that list is a false
+positive rather than a finding.
