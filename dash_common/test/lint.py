@@ -177,11 +177,74 @@ def check_setting_flag_type(path, text, findings):
                 )
 
 
+def _balanced(text, start, open_ch="(", close_ch=")"):
+    """The source of the form beginning at start, to its matching close."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == open_ch:
+            depth += 1
+        elif text[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return text[start:]
+
+
+def check_settings_restored(path, text, findings):
+    """Every setting read at load must be written by restore-settings.
+
+    An eeprom slot that has never been written reads nil on hardware, where the
+    test stub hands back 0 -- so a setting added to settings-load and forgotten
+    in restore-settings works in the renders and throws on a real board. That
+    took the dash down before its first draw once already: setting-clamp
+    compares with `=`, and `=` on nil is a type error rather than false.
+
+    Checked statically because the goldens structurally cannot see it.
+    """
+    if "eeprom-addrs" not in text:
+        return
+
+    clean = strip_comments(text)
+
+    declared = set(re.findall(
+        r"\(([\w\-]+)\s*\.\s*\(\s*\d+\s+[ifb]\s*\)\)",
+        _balanced(clean, clean.index("(def eeprom-addrs"))))
+
+    def names_in(defun, pattern):
+        try:
+            i = clean.index(defun)
+        except ValueError:
+            return set()
+        body = _balanced(clean, i)
+        found = set(re.findall(pattern, body))
+        # names passed as a quoted list to ix, which is how the repeated
+        # per-slot and per-button settings are written
+        for group in re.findall(r"ix '\(([^)]*)\)", body):
+            found |= set(group.split())
+        return found
+
+    read = names_in("(defun settings-load",
+                    r"\((?:read-setting|setting-flag)\s+'([\w\-]+)")
+    written = names_in("(defun restore-settings",
+                       r"\(write-setting\s+'([\w\-]+)")
+
+    for name in sorted(read - written):
+        findings.append(
+            f"{path}: '{name}' is read by settings-load but never written by "
+            f"restore-settings -- it reads nil on hardware and throws")
+
+    for name in sorted(read - declared):
+        findings.append(
+            f"{path}: '{name}' is read by settings-load but is not in "
+            f"eeprom-addrs -- read-setting returns nil for it")
+
+
 CHECKS = (
     check_paren_balance,
     check_return_needs_defunret,
     check_string_equality,
     check_setting_flag_type,
+    check_settings_restored,
 )
 
 

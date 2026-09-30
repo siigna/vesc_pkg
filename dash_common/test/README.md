@@ -90,6 +90,7 @@ drawing, not the paths that only run on a real vehicle.
 | `=` or `!=` on a string | the quick shade took the page down the first time a button had no state line |
 | `setting-flag` on a `b` cell | `pin-en` took `settings-load` down on the first load |
 | unbalanced parens | not yet, but it is free |
+| a setting read at load but never written by `restore-settings` | the dash died before its first draw on real hardware -- an unwritten slot reads `nil` there, where the test stub returns `0`, and `setting-clamp` compares with `=` |
 
 The first of those is the one that earns the tool: it found a second,
 pre-existing instance immediately, in code that had already shipped and passed
