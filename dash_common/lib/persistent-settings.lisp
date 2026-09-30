@@ -215,10 +215,18 @@
 (def setting-catalog-max 6)
 
 ; An unwritten cell reads -1, which as a float is NaN, so test that first.
+;
+; nil is tested before that, and not for tidiness: read-setting returns nil for
+; a name that is not in eeprom-addrs, and on real hardware for a slot that has
+; never been written -- where the test stub hands back 0 instead. Comparing nil
+; with = is a type error, which took settings-load down with it and left the
+; dash dead before it drew anything. A missing setting has to degrade to its
+; default, not stop the display coming up.
 (defun setting-clamp (v lo hi dflt)
+    (if (eq v nil) dflt
     (if (not (= v v)) dflt
         (if (< v lo) dflt
-            (if (> v hi) dflt v))))
+            (if (> v hi) dflt v)))))
 
 ; A never written cell reads nil, and comparing that to a number throws.
 (defun setting-flag (name dflt)
@@ -526,6 +534,12 @@
 
         (write-setting 'pin-code 0)
         (write-setting 'pin-en 0)
+
+        ; Added to eeprom-addrs and to settings-load when the chart page was
+        ; written, and missed here. An unwritten slot reads nil on hardware, so
+        ; the clamp above threw and took the whole of settings-load with it.
+        (write-setting 'chart-src 4)
+        (write-setting 'chart-secs 10)
 
         ; -1 is "no colour picked", which is what makes the three fall back to
         ; whatever the theme says. Writing an actual colour here would pin them
