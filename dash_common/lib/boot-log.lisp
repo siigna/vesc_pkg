@@ -52,11 +52,20 @@
                 (var err (ix st 1))
                 (var last (ix st 2))
 
+                ; Three numbers, because there are three ways touch can be
+                ; useless and they need different fixes: the bus not
+                ; answering, the panel answering but never reporting a finger,
+                ; and a finger reported while the regions or the dispatch are
+                ; wrong. Same wording as the Lua dash's, so a reading from
+                ; either board says the same thing.
                 (if (= err 0)
-                    (str-merge "touch: bus ok (" (str-from-n ok "%d") ")")
+                    (str-merge "touch: bus ok (" (str-from-n ok "%d") "), "
+                               (str-from-n touch-reads "%d") " fingers, "
+                               (str-from-n touch-fires "%d") " actions")
                     (str-merge "touch: " (str-from-n ok "%d") " ok, "
                                (str-from-n err "%d") " FAILED, last err "
-                               (str-from-n last "%d")))
+                               (str-from-n last "%d") ", "
+                               (str-from-n touch-reads "%d") " fingers"))
         })
 })
 

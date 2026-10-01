@@ -17,23 +17,25 @@ fail to run it, reporting a container it does not understand.
 
 ## What differs from the lisp dash
 
-Three things it does that the lisp one does not:
+Two things, now that the boot log and the touch region overlay have been
+backported -- both were written here first and the lisp dash has them too.
 
-- **A boot log**, on the glass and as a page. The firmware keeps the last
-  lines said during bring-up, which otherwise go to whichever port last spoke
-  to the board -- on this board, with the console off, nowhere at all.
-- **A touch region overlay**, briefly after startup, labelled from the region
-  map itself rather than from a copy of it.
 - **A working backlight dim action.** The lisp accepts action 7 and ignores
   it, because the dashes it came from have no backlight control. This board
-  drives the backlight on a PWM pin.
+  drives the backlight on a PWM pin, so the quick shade's DIM button does
+  something.
 
-And one thing it deliberately does not do: the package UI's channel carries
-three parsed commands here, where the lisp dash evaluates whatever arrives as
-code. Anything that can put a custom app data packet on the wire can run
-arbitrary code on a lisp dash. The Lua sandbox removes `load` for that
-reason, and the channel was narrowed to match rather than the sandbox
-widened.
+- **The package UI's channel carries three parsed commands**, where the lisp
+  dash evaluates whatever arrives as code. Anything that can put a custom app
+  data packet on the wire -- over USB, over CAN, from another package -- can
+  run arbitrary code on a lisp dash. The Lua sandbox removes `load` for that
+  reason, and the channel was narrowed to match rather than the sandbox
+  widened.
+
+One internal difference worth knowing if you read both: the startup overlays
+run from the dash's timer here and block in their own thread in the lisp. The
+Lua engine has one timer and no threads, and holding it during startup drops
+every event that arrives in that window.
 
 ## Building
 

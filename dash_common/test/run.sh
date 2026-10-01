@@ -47,6 +47,16 @@ for f in ../views/*.lbm; do strip_const "$f" "build/common/views/$(basename "$f"
 # walk-requested, pulled out of the real main_body rather than copied into the
 # test, so the test cannot drift from what ships. Importing main_body whole
 # would drag in the views and the display.
+# boot-log-touch-line, for bootlog_test. Extracted rather than copied: the
+# test pins the exact words, and the Lua dash's test pins the same ones, so a
+# copy here would let the shipped function drift away from both while the
+# tests went on agreeing with each other.
+awk '/^\(defun boot-log-touch-line /,/^\}\)/' ../lib/boot-log.lisp > build/common/bootlog_fn.lisp
+if ! grep -q 'defun boot-log-touch-line' build/common/bootlog_fn.lisp; then
+    echo "could not extract boot-log-touch-line from lib/boot-log.lisp" >&2
+    exit 1
+fi
+
 # region-box and region-overlay, for the overlay render. Extracted rather than
 # copied for the same reason as everything else here: the render is compared
 # against the Lua dash's same overlay, pixel for pixel, and a copy of the
@@ -116,7 +126,7 @@ fi
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
-for unit in battery_test walk_test hit_test smooth_test signal_test pin_test; do
+for unit in battery_test walk_test hit_test smooth_test signal_test pin_test bootlog_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
     echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
     if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi

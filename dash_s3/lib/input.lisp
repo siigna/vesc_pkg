@@ -27,6 +27,16 @@
 (def touch-x 0)
 (def touch-y 0)
 
+; How many polls reported a finger, and how many presses and gestures came out
+; the other end. Diagnostics, and the only ones that separate the three ways
+; touch can be useless on a board where it is the sole input: the bus not
+; answering (the firmware's own tally, which stays flat), the panel answering
+; but reporting nothing (touch-reads is zero), and the panel reporting fine
+; while the regions or the dispatch are wrong (touch-reads climbs and
+; touch-fires does not).
+(def touch-reads 0)
+(def touch-fires 0)
+
 ; How far through its long press each region is, 0.0 to 1.0, and nil when
 ; nothing is held. A view can use this to fade the value the press is about
 ; to reset, so the thing being destroyed is the progress bar -- no dialog, no
@@ -53,7 +63,10 @@
 (def maybe-call (macro (expr) {
             (var fun (first expr))
             `(if ,fun
-                ,expr
+                {
+                    (setq touch-fires (+ touch-fires 1))
+                    ,expr
+                }
             )
 }))
 
@@ -111,6 +124,7 @@
                 (if p {
                         (setq touch-x (ix p 0))
                         (setq touch-y (ix p 1))
+                        (setq touch-reads (+ touch-reads 1))
                 })
 
                 (var region (if p (touch-region touch-x touch-y) nil))

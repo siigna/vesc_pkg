@@ -81,8 +81,10 @@ return {
 	-- input.region, so what it draws is the map that is really in force.
 	region_overlay_s = 5.0,
 
-	-- Trace the UI channel while it is being brought up.
-	appdata_trace = true,
+	-- Print every packet the UI channel receives. For bringing that
+	-- channel up; off otherwise, because the UI sends one per keystroke in
+	-- places and each line costs a slot in the log ring.
+	appdata_trace = false,
 
 	-- Prefer GNSS speed over the controller's estimate. Off: this board has
 	-- no GNSS of its own.
