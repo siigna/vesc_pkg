@@ -106,6 +106,16 @@ run_case live '(view-static-step)
 (page-live false)
 (view-static-step)' live_p4.lua || fail=1
 
+run_case shade '(view-static-step)
+(setq page-now (+ page-num 1))
+(page-shade true)
+(page-shade false)' shade_p4.lua || fail=1
+
+run_case pin '(view-static-step)
+(setq page-now (+ page-num 2))
+(page-pin true)
+(page-pin false)' pin_p4.lua || fail=1
+
 run_case settings '(view-static-step)
 (setq page-now 8)
 (page-settings true)

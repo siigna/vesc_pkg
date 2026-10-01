@@ -966,4 +966,246 @@ function M.page_conf(switched)
 	M.conf_last = curr
 end
 
+-- --- Quick shade ---
+--
+-- Six buttons over the whole panel above the nav strip, reachable from any
+-- page by swiping down and closed by swiping up. Each cell runs one button
+-- action id, so anything bindable to a button can be put here.
+--
+-- That is the point of it on a touch board: four regions with one short and
+-- one long action each is the whole of the input, and paging and the settings
+-- page already take three of the short ones. Without this a rider can reach
+-- exactly one control.
+
+-- Which action each cell runs, from the settings.
+M.shade_slots = {4, 5, 6, 8, 9, 14}
+
+-- Action 0 is an empty cell. Walk assist is deliberately absent: it is a held
+-- action, and a tap cannot hold anything, so it stays on a physical region
+-- where the hold indicator can fill.
+local SHADE_LABELS = {
+	[1] = "PAGE >", [2] = "PAGE <", [3] = "SETTINGS",
+	[4] = "MODE +", [5] = "MODE -", [6] = "LIGHTS",
+	[7] = "DIM", [8] = "CRUISE", [9] = "LOG",
+	[12] = "RESET", [14] = "SAVE", [15] = "REVERT",
+	[16] = "CLOSE",
+	[17] = "HAZARD", [18] = "LEFT", [19] = "RIGHT",
+	[20] = "BEAM", [21] = "HORN",
+}
+
+function M.shade_label(a)
+	return SHADE_LABELS[a] or ""
+end
+
+-- The line under the label: what the control is currently doing, where that
+-- is known. Logging has no feedback channel, so it says nothing rather than
+-- claiming a state it cannot see.
+function M.shade_state(a)
+	local mode = require("lib.mode")
+	local signals = require("lib.signals")
+
+	if a == 4 or a == 5 then
+		return M.drive_mode_names[mode.current + 1] or ""
+	end
+	if a == 6 then return state.light_on and "on" or "off" end
+	if a == 8 then return state.cruise_control_active and "on" or "off" end
+	if a == 14 or a == 15 then return state.conf_dirty and "unsaved" or "saved" end
+	if a == 12 then return "session" end
+	-- The request, not the reported state: this says what the button did, and
+	-- the status strip is where what the bike is doing belongs.
+	if a == 17 then return signals.on(signals.HAZARD) and "on" or "off" end
+	if a == 18 then return signals.on(signals.LEFT) and "on" or "off" end
+	if a == 19 then return signals.on(signals.RIGHT) and "on" or "off" end
+	if a == 20 then return signals.on(signals.BEAM) and "high" or "low" end
+	if a == 21 then return "press" end
+	return ""
+end
+
+-- Lit when the control is on, so the grid reads at a glance.
+function M.shade_active(a)
+	local signals = require("lib.signals")
+
+	if a == 6 then return state.light_on end
+	if a == 8 then return state.cruise_control_active end
+	if a == 14 or a == 15 then return state.conf_dirty end
+	if a == 17 then return signals.on(signals.HAZARD) end
+	if a == 18 then return signals.on(signals.LEFT) end
+	if a == 19 then return signals.on(signals.RIGHT) end
+	if a == 20 then return signals.on(signals.BEAM) end
+	if a == 21 then return signals.horn_blipping() end
+	return false
+end
+
+M.drive_mode_names = {"REVERSE", "NEUTRAL", "ECO", "NORMAL", "SPORT"}
+
+-- An overlay covers the whole panel above the nav strip, which page_clear
+-- does not, so it clears more.
+function M.overlay_clear()
+	local L = M.L
+	local strip = vesc.img_buffer("indexed2", L.disp_w, 4)
+	for i = 0, L.nav_y // 4 - 1 do
+		vesc.disp_render(strip, 0, i * 4, {colors.bg, colors.bg})
+	end
+end
+
+M.shade_last = {}
+
+function M.shade_state_list()
+	local mode = require("lib.mode")
+	local signals = require("lib.signals")
+	return {
+		mode.current, state.light_on, state.cruise_control_active,
+		state.conf_dirty, signals.req, signals.horn_blipping(),
+	}
+end
+
+function M.page_shade(switched)
+	local geom = require("lib.geom")
+	local L = M.L
+	local g = geom.shade(L.disp_w, L.nav_y)
+	local curr = M.shade_state_list()
+
+	if switched then
+		M.resources = {
+			shade_img = vesc.img_buffer("indexed4", g.cell_w - 8, g.cell_h - 8),
+		}
+		M.overlay_clear()
+	end
+
+	-- Every button is redrawn whenever any state changes. Six cells is cheap,
+	-- and the alternative is a per-cell dirty check over state several cells
+	-- share.
+	if switched or not same(curr, M.shade_last) then
+		local img = M.resources.shade_img
+		local bw, bh = g.cell_w - 8, g.cell_h - 8
+
+		for i = 0, g.cols * g.rows - 1 do
+			local a = M.shade_slots[i + 1] or 0
+			img:clear()
+			if a ~= 0 then
+				img:rectangle(0, 0, bw, bh, 1, false, 1, 8)
+				du.ttf_txt_center(M.shade_label(a), M.font_24, img,
+					{0, 3, 3, 3}, bh // 2 - 6)
+				local sub = M.shade_state(a)
+				if sub ~= "" then
+					du.ttf_txt_center(sub, M.font_16, img,
+						{0, 2, 2, 2}, bh // 2 + 22)
+				end
+			end
+			vesc.disp_render(img, g.cell_x(i) + 4, g.cell_y(i) + 4,
+				M.shade_active(a) and colors.accent_aa or colors.text_aa)
+		end
+	end
+
+	M.shade_last = curr
+end
+
+-- --- PIN keypad ---
+--
+-- A keypad over the whole panel, shown at startup when a PIN is set and until
+-- it is entered. While it is up the display asserts neutral instead of the
+-- stored drive mode, whose current scale is zero, so the motor will not turn.
+--
+-- Be clear about what this is: a deterrent, not security. The PIN is a plain
+-- number in eeprom that anything on the bus can read, and the dash-side half
+-- stops working the moment the display is unplugged.
+
+M.pin_cols = 3
+M.pin_rows = 4
+M.pin_entry_h = 56
+
+-- 1-9 then clear, zero, enter. -1 is clear and -2 is enter, so the cell value
+-- is the digit everywhere else and no lookup table is needed.
+M.pin_keys = {1, 2, 3, 4, 5, 6, 7, 8, 9, -1, 0, -2}
+
+function M.pin_geom()
+	local L = M.L
+	local top = M.pin_entry_h + 4
+	return {
+		top = top,
+		key_w = L.disp_w // M.pin_cols,
+		key_h = (L.nav_y - top) // M.pin_rows,
+	}
+end
+
+function M.pin_key_x(i, pg)
+	return (i % M.pin_cols) * pg.key_w
+end
+
+function M.pin_key_y(i, pg)
+	return pg.top + (i // M.pin_cols) * pg.key_h
+end
+
+function M.pin_key_label(v)
+	if v == -1 then return "C" end
+	if v == -2 then return "OK" end
+	return string.format("%d", v)
+end
+
+-- Which key a coordinate is over, or nil. Same shape as the other two grids.
+function M.pin_key_hit(x, y)
+	local pg = M.pin_geom()
+	if x < 0 or y < pg.top then
+		return nil
+	end
+	local cx = x // pg.key_w
+	local cy = (y - pg.top) // pg.key_h
+	if cx >= M.pin_cols or cy >= M.pin_rows then
+		return nil
+	end
+	return cy * M.pin_cols + cx
+end
+
+M.pin_last = {}
+
+function M.page_pin(switched)
+	local pin = require("lib.pin")
+	local L = M.L
+	local pg = M.pin_geom()
+	local curr = {pin.entry_len, pin.wait_left, pin.msg()}
+
+	if switched then
+		M.resources = {
+			pin_key = vesc.img_buffer("indexed4", pg.key_w - 8, pg.key_h - 8),
+			pin_top = vesc.img_buffer("indexed4", L.disp_w, M.pin_entry_h),
+		}
+		M.overlay_clear()
+
+		-- The keys never change, so they are drawn once on entry.
+		local img = M.resources.pin_key
+		for i = 0, M.pin_cols * M.pin_rows - 1 do
+			img:clear()
+			img:rectangle(0, 0, pg.key_w - 8, pg.key_h - 8, 1, false, 1, 8)
+			-- The big font carries only "0123456789.:-% DVESC", so the digits
+			-- get it and the two word keys fall back to the mid font, which
+			-- has the full character set.
+			local v = M.pin_keys[i + 1]
+			du.ttf_txt_center(M.pin_key_label(v),
+				(v < 0) and M.font_24 or M.font_40, img, {0, 3, 3, 3})
+			vesc.disp_render(img, M.pin_key_x(i, pg) + 4,
+				M.pin_key_y(i, pg) + 4, colors.text_aa)
+		end
+	end
+
+	if switched or not same(curr, M.pin_last) then
+		local top = M.resources.pin_top
+		top:clear()
+
+		-- One dot per digit entered rather than the digits, and the message
+		-- line instead while there is one to show.
+		local msg = pin.msg()
+		if msg ~= "" then
+			du.ttf_txt_center(msg, M.font_24, top, {0, 2, 2, 2})
+		else
+			-- Asterisks and hyphens, both of which the big font has.
+			du.ttf_txt_center(pin.dots(), M.font_40, top)
+		end
+
+		vesc.disp_render(top, 0, 0,
+			(pin.wait_left > 0) and colors.crit_aa or colors.text_aa)
+	end
+
+	M.pin_last = curr
+end
+
 return M
