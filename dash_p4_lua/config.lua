@@ -3,9 +3,10 @@
 -- The Lua counterpart of dash_p4/config.lisp. Values taken from there rather
 -- than re-derived, so the two dashes agree about the panel.
 --
--- This file shadows dash_common_lua/lib/config.lua by being first on the
--- packer's import path: the board's numbers win, and the shared defaults are
--- the fallback for anything a board does not set.
+-- Not a shadow of dash_common_lua/lib/config.lua, despite holding some of the
+-- same fields: require("lib.config") resolves to that file regardless of what
+-- this package puts at "config". main.lua copies these over it at startup,
+-- which is what makes the board's numbers win.
 return {
 	-- Panel, after rotation. Native is 480x800, and the rotation is what
 	-- makes it landscape.
@@ -27,6 +28,47 @@ return {
 	touch_scl = 8,
 	touch_rst = 23,
 	touch_int = -1,
+
+	-- Bands, stacked by view_static.set_layout. Changing one height moves
+	-- what follows it, so these are the only numbers that differ between a
+	-- 480x480 and an 800x480 panel.
+	strip_h = 58,      -- status strip along the top
+	speed_h = 145,     -- big speed readout
+	page_h = 120,      -- swappable page area
+	page_cols = 4,     -- label/value columns; 8 cells, so 4 cols = 2 rows
+	page_row_h = 44,   -- must fit the font the page grid draws with
+
+	-- Touch, as (swap_xy, mirror_x, mirror_y). The panel is rotated in the
+	-- display driver and the controller is told the rotated size, so nothing
+	-- is left to undo here.
+	touch_transforms = {false, false, false},
+
+	-- Which action each of the four touch regions runs, short and long. See
+	-- lib/actions.lua for the ids. Only the board knows a sensible default,
+	-- because which region index 0 to 3 means differs per board.
+	--
+	--   0 settings, 1 page-, 2 page+, 3 lights
+	btn_actions_short = {3, 2, 1, 6},
+	--   region 1 long-presses to reset the session
+	btn_actions_long = {0, 12, 0, 8},
+
+	drive_mode_names = {"REVERSE", "NEUTRAL", "ECO", "NORMAL", "SPORT"},
+
+	-- For hardware whose single light output is the high beam, where there is
+	-- no separate signal.
+	light_on_default = false,
+	light_on_is_highbeam = false,
+
+	-- Prefer GNSS speed over the controller's estimate. Off: this board has
+	-- no GNSS of its own.
+	gnss_use_speed = false,
+
+	-- Defaults the settings fall back to when their eeprom cells are unset.
+	metric_speeds = true,
+	metric_temps = true,
+	battery_hot = 55.0,
+	esc_hot = 80.0,
+	motor_hot = 80.0,
 
 	-- The pack, which is what the battery model needs. Placeholders, as in
 	-- the lisp: an unconfigured pack should read obviously wrong.

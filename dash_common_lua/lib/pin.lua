@@ -38,7 +38,10 @@ M.msg_ts = 0
 -- reads settings-pin-code and drive-mode as globals; here they are set by
 -- whoever owns them.
 M.code = 0
-M.drive_mode = 0
+-- Deliberately not a copy of the drive mode. The lisp's pin-drive-mode reads
+-- the live drive-mode global; a field here would have to be written by
+-- something each time the mode changed, and nothing was -- so the dash
+-- transmitted whatever this was initialised to for the rest of the session.
 
 -- Sent when the lock changes. Defaults to doing nothing so a host test can
 -- drive the logic without comms, and the dash replaces them.
@@ -170,7 +173,7 @@ function M.get_drive_mode()
 	if M.locked then
 		return 1
 	end
-	return M.drive_mode
+	return require("lib.mode").current
 end
 
 return M

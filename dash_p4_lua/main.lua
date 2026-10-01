@@ -1,194 +1,125 @@
--- A runnable dash skeleton for the P4 board, under the Lua engine.
+-- The dash, on the Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, under the Lua
+-- engine.
 --
--- Not the dash. This is the smallest thing that proves the ported modules
--- work together on hardware: the panel comes up, the backlight comes on,
--- fonts render, CAN frames reach the decoder, and touch is read. Everything
--- it draws comes through lib/ rather than being computed here, so when the
--- views are ported they replace the drawing and nothing else.
+-- The Lua counterpart of dash_p4/main.lisp plus the board-specific parts of
+-- dash_common/main_body.lisp. Everything not specific to this panel is in
+-- dash_common_lua; this file is the board: the display, the touch controller,
+-- the backlight, the fonts, and the handful of values only the board knows.
 --
--- What it deliberately does not do: pages, settings, the quick shade, the
--- chart. Those need view_pages, which is the bulk of the port.
+-- Unlike the lisp there is no import list to maintain. vesc_tool packs lisp
+-- imports by scanning the top-level file with no recursion, which is why
+-- dash_p4/main.lisp has to name all nineteen of them; tools/luapack.py
+-- follows require() through the tree instead.
 
 local config = require("config")
-local state = require("lib.state")
 local colors = require("lib.colors")
-local battery = require("lib.battery")
+local units = require("lib.units")
+local vs = require("lib.view_static")
+local vp = require("lib.view_pages")
 local comms = require("lib.comms")
-local signals = require("lib.signals")
-local stats = require("lib.statistics")
+local standalone = require("lib.standalone")
+local notify = require("lib.notify")
+local dash = require("lib.dash")
 
-vesc.set_print_prefix("DASH-")
+vesc.set_print_prefix("DISP-")
 
--- --- panel ---
+--- the panel ---
 --
--- The order matters: the rotation has to be applied before touch is loaded,
--- because touch is told the rotated size.
+-- This panel is supported upstream, so unlike the S3 board there is no
+-- board-specific init sequence: disp_load takes the two numbers it needs.
+--
+-- Native is 480x800, so the rotation is what makes it landscape, and it has
+-- to be applied before touch is loaded because touch is told the rotated
+-- size.
 assert(vesc.disp_load("st7701", config.disp_rst, config.disp_lane_mbps),
 	"panel did not load")
 vesc.disp_orientation(config.disp_rotation)
 
--- The backlight. Active-LOW, so the duty is inverted -- and the firmware
--- parks the pin off at boot, which is why nothing shows until this runs.
+-- Real PWM backlight. The pin is active-LOW, so the duty is inverted; the
+-- firmware parks it off in hw_init so nothing shows before the first draw.
 local function bl_set(level)
 	if level < 0.0 then level = 0.0 elseif level > 1.0 then level = 1.0 end
 	vesc.pwm_start(config.bl_freq, 1.0 - level, 0, config.bl_pin)
 end
 
--- Text colour is the BASE palette index, not the colour to draw. The font
--- binding adds coverage to it: with an indexed4 glyph, coverage 1..3 becomes
--- index colour, colour+1, colour+2. So 1 is right for a four-entry ramp --
--- 0 is the background and 1..3 are the fade.
+--- touch ---
 --
--- Passing 3 looks reasonable and is wrong: coverage then lands on 3, 4 and 5,
--- and a four-entry palette has no 4 or 5. The solid centre of every glyph
--- reads past the palette, which on hardware looked like text that had not
--- antialiased properly rather than like an error.
-local TEXT_IDX = 1
+-- Optional. Every control on this board is touch, so a dead controller costs
+-- the whole UI -- but a dash that still shows the speed is worth more than
+-- one that refuses to start, and the message says which it is.
+local touch_ok = pcall(vesc.touch_load_gt911, config.touch_sda,
+	config.touch_scl, config.touch_rst, config.touch_int,
+	config.disp_w, config.disp_h)
 
--- --- fonts ---
-local font_big = vesc.font_load(vesc.asset("font40"))
-local font_small = vesc.font_load(vesc.asset("font18"))
+if touch_ok then
+	pcall(vesc.touch_transform, config.touch_transforms[1],
+		config.touch_transforms[2], config.touch_transforms[3])
+else
+	print("touch init failed; the dash will run but nothing can be pressed")
+end
 
--- --- colours ---
+--- fonts ---
+--
+-- Pre-rendered by dash_p4/font/generate_fonts. Preparing them on the device
+-- would mean shipping Roboto-Bold.ttf, which is larger than the fonts and the
+-- whole source put together. The two big ones carry only the glyphs they can
+-- draw, plus a "D" that ttf_txt_center measures to find the baseline.
+local font_speed = vesc.font_load(vesc.asset("font120"))
+local font_40 = vesc.font_load(vesc.asset("font40"))
+local font_24 = vesc.font_load(vesc.asset("font24"))
+local font_16 = vesc.font_load(vesc.asset("font18"))
+
+--- layout ---
+--
+-- view_static owns it and view_pages reads it back, so the bands cannot
+-- drift apart.
+local L = vs.set_layout(config)
+vp.set_layout(L)
+
+vs.font_speed = font_speed
+vs.font_24 = font_24
+vs.font_16 = font_16
+vs.drive_mode_names = config.drive_mode_names
+vs.light_on_is_highbeam = config.light_on_is_highbeam
+
+vp.font_40 = font_40
+vp.font_24 = font_24
+vp.font_16 = font_16
+
+notify.font = font_24
+
+dash.font_40 = font_40
+dash.font_24 = font_24
+dash.bl_set = bl_set
+dash.version = require("version")
+
+--- board values the shared code asks for ---
+
+-- lib/battery.lua reads its pack from lib/config.lua, which ships
+-- conservative placeholders. The board's numbers are copied over them rather
+-- than the file being shadowed on the import path: require("lib.config")
+-- resolves to the shared file whatever this package puts at "config", so
+-- shadowing would only have worked if the board file were also at lib/.
+--
+-- On this board the two happen to hold the same pack, so nothing read wrong;
+-- it read right by duplication, which is the kind of thing that stops being
+-- true the first time one of them is edited.
+local shared_config = require("lib.config")
+for k, v in pairs(config) do
+	shared_config[k] = v
+end
+
 colors.bg = 0x000000
-colors.accent = 0x00C8FF
-colors.text = 0xfbfcfc
-colors.build()
 
-vesc.disp_clear(colors.bg)
-bl_set(config.bl_bright)
+-- GNSS speed, when the board has it. This one does not, so standalone mode
+-- falls back to the controller's own estimate.
+standalone.use_gnss_speed = config.gnss_use_speed
+comms.use_gnss_speed = config.gnss_use_speed
 
--- --- splash, so there is something on the glass before any CAN arrives ---
-do
-	local h = 80
-	local buf = vesc.img_buffer("indexed4", config.disp_w, h)
-	buf:clear()
-	local w = font_big:measure("VESC")
-	buf:text((config.disp_w - w) // 2, 56, font_big, "VESC", TEXT_IDX, true)
-	vesc.disp_render(buf, 0, (config.disp_h - h) // 2, colors.accent_aa)
-end
+require("lib.state").light_on = config.light_on_default
 
-vesc.sleep(1.5)
-vesc.disp_clear(colors.bg)
+--- go ---
 
--- --- touch ---
-local touch_ok = pcall(vesc.touch_load_gt911, config.touch_sda, config.touch_scl,
-	config.touch_rst, config.touch_int, config.disp_w, config.disp_h)
-print("touch loaded:", touch_ok)
+dash.start(config)
 
--- --- CAN in ---
---
--- comms owns the decode; this only has to hand it the frame. The dash's own
--- event handler does the same thing with a lisp recv loop.
-comms.use_gnss_speed = false
-vesc.on_can(function(id, data)
-	-- Trapped: a short or unexpected frame must not take the handler down,
-	-- because losing it means losing every later frame too.
-	local ok, err = pcall(comms.proc_sid, id, data)
-	if not ok then
-		print("frame", id, "rejected:", err)
-	end
-end)
-
--- --- the one page ---
---
--- Four fields, drawn only when their text changes. Change detection on the
--- formatted string rather than the number is what keeps a 10 Hz redraw from
--- repainting a value that rounds to the same thing.
-local FIELDS = {
-	{label = "SPEED", unit = "km/h", get = function() return string.format("%.1f", state.kmh) end},
-	{label = "VOLTS", unit = "V",    get = function() return string.format("%.1f", state.vin) end},
-	{label = "SOC",   unit = "%",    get = function() return string.format("%.0f", battery.soc() * 100) end},
-	{label = "POWER", unit = "kW",   get = function() return string.format("%.2f", state.kw) end},
-}
-
-local col_w = config.disp_w // #FIELDS
-local shown = {}
-local bufs = {}
-local labels_drawn = false
-
-local function draw_labels()
-	for i, f in ipairs(FIELDS) do
-		local buf = vesc.img_buffer("indexed4", col_w, 24)
-		buf:clear()
-		buf:text(8, 18, font_small, f.label .. " " .. f.unit, TEXT_IDX, true)
-		vesc.disp_render(buf, (i - 1) * col_w, 150, colors.text_aa)
-	end
-	labels_drawn = true
-end
-
-local function draw_fields()
-	for i, f in ipairs(FIELDS) do
-		local txt = f.get()
-		if txt ~= shown[i] then
-			shown[i] = txt
-			-- One buffer per column, kept rather than reallocated: the
-			-- engine has a memory ceiling and a fresh buffer per frame per
-			-- field is the easiest way to reach it.
-			if not bufs[i] then
-				bufs[i] = vesc.img_buffer("indexed4", col_w, 48)
-			end
-			local buf = bufs[i]
-			buf:clear()
-			buf:text(8, 40, font_big, txt, TEXT_IDX, true)
-			vesc.disp_render(buf, (i - 1) * col_w, 180, colors.accent_aa)
-		end
-	end
-end
-
--- Status line: whether a controller is talking at all, which is the first
--- thing worth knowing on a bench.
-local status_shown = nil
-local status_buf = nil
-
-local function draw_status()
-	local txt
-	if comms.rx_cnt == 0 then
-		txt = "no controller seen"
-	else
-		txt = string.format("%d frames   touch %s", comms.rx_cnt,
-			touch_ok and "ok" or "off")
-	end
-
-	if txt ~= status_shown then
-		status_shown = txt
-		status_buf = status_buf or vesc.img_buffer("indexed4", config.disp_w, 24)
-		status_buf:clear()
-		status_buf:text(8, 18, font_small, txt, TEXT_IDX, true)
-		vesc.disp_render(status_buf, 0, 420, colors.text_aa)
-	end
-end
-
--- A touch anywhere dims the backlight, which is the smallest proof that
--- touch, state and the panel are all live at once.
-local dim = false
-
-vesc.on_timer(100, function()
-	if not labels_drawn then
-		draw_labels()
-	end
-
-	draw_fields()
-	draw_status()
-
-	local x = vesc.touch_read()
-	if x then
-		if not dim then
-			dim = true
-			bl_set(config.bl_dim)
-		end
-	elseif dim then
-		dim = false
-		bl_set(config.bl_bright)
-	end
-
-	-- Keep the smoothing and chart paths exercised, so the modules the views
-	-- will use are running rather than merely linked.
-	state.kmh_smooth = stats.smooth_step(state.kmh_smooth, state.kmh, 0.3, 0.0, 100.0)
-	stats.chart_tick = stats.chart_tick + 1
-	if stats.chart_tick % 10 == 0 then
-		stats.chart_push(state.kmh)
-	end
-end)
-
-print("dash skeleton up")
+print("dash up")

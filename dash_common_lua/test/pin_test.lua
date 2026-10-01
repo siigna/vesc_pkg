@@ -24,7 +24,7 @@ local function enter(digits)
 end
 
 pin.code = 1234
-pin.drive_mode = 4
+require("lib.mode").current = 4
 
 -- Unlocked to begin with, and the stored mode goes out untouched.
 t.ok("starts unlocked",     not pin.locked)
@@ -36,7 +36,7 @@ t.ok("mode passes through", pin.get_drive_mode() == 4)
 pin.engage()
 t.ok("engaged",              pin.locked)
 t.ok("asserts neutral",      pin.get_drive_mode() == 1)
-t.ok("stored mode untouched", pin.drive_mode == 4)
+t.ok("stored mode untouched", require("lib.mode").current == 4)
 t.ok("lock sent",            sends[1] == "lock")
 
 -- The right code, a digit at a time, opens it on the fourth without OK.
