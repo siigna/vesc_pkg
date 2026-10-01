@@ -137,6 +137,99 @@ function M.visual()
 		or settings.values.bl_bright)
 end
 
+--- the config packet ---
+--
+-- Port of send-cfg. One framed packet of the whole settings state, which the
+-- package UI reads to populate itself.
+--
+-- Positional and append-only: the UI splits on spaces and indexes the
+-- result, so inserting a field anywhere but the end silently reinterprets
+-- every later one. The lisp says the same and it is the only thing holding
+-- the two sides together -- there is no length, no version and no names on
+-- the wire.
+--
+-- One packet rather than per-setting prints, because the REPL channel rate
+-- limits to one command every 500 ms and sixty of those would take half a
+-- minute.
+--
+-- Returns the string as well as sending it, so a test can compare it against
+-- what the lisp dash produces without a board.
+function M.cfg_string()
+	local v = settings.values
+	local standalone = require("lib.standalone")
+	local out = {"cfg "}
+
+	local function add(fmt, val)
+		out[#out + 1] = string.format(fmt, val)
+	end
+	local function flag(b)
+		add("%d ", b and 1 or 0)
+	end
+	-- The stored value, not the resolved one, so the UI can show "Theme" for
+	-- a colour nobody has overridden. restore writes -1 for exactly that,
+	-- and an unwritten cell reads as nothing.
+	local function stored(name)
+		add("%d ", settings.read(name) or -1)
+	end
+
+	flag(v.units_metric)
+	flag(v.temps_metric)
+	add("%.1f ", v.batt_hot)
+	add("%.1f ", v.esc_hot)
+	add("%.1f ", v.motor_hot)
+	-- %d on a level that is a float on a board with real PWM backlight. That
+	-- is the lisp's format and the UI parses it as an integer, so it is kept:
+	-- the two levels this UI can set are 0 and 1.
+	add("%d ", math.floor(v.bl_bright))
+	add("%d ", math.floor(v.bl_dim))
+	add("%d ", v.drive_modes)
+	add("%d ", v.page_mask)
+	add("%d ", v.setting_mask)
+
+	for i = 1, 4 do add("%d ", v.btn_short[i]) end
+	for i = 1, 4 do add("%d ", v.btn_long[i]) end
+
+	add("%d ", v.esc_mode)
+	add("%d ", v.esc_id)
+	flag(standalone.active)
+	add("%d ", standalone.esc_id)
+	add("%d ", v.icon_mask)
+
+	stored("col_accent")
+	stored("col_text")
+
+	for i = 1, 4 do add("%d ", v.slots[i]) end
+	-- Resolved, not stored, unlike the three main colours above. That is the
+	-- lisp's choice and it is observable: an unpicked cell sends the theme's
+	-- text colour here and -1 there. Checked against the lisp's own output,
+	-- which is the only reason it is right.
+	for i = 1, 4 do add("%d ", v.slot_cols[i]) end
+	for i = 1, 4 do add("%d ", v.slot_modes[i]) end
+	for i = 1, 4 do add("%.0f ", v.slot_mins[i]) end
+	for i = 1, 4 do add("%.0f ", v.slot_maxs[i]) end
+
+	flag(v.batt_ramp)
+	flag(v.splash)
+	add("%d ", v.theme)
+	stored("col_bg")
+	add("%d ", v.chart_src)
+	add("%d ", v.chart_secs)
+	add("%.2f ", v.smooth)
+	for i = 1, 6 do add("%d ", v.shade[i]) end
+	add("%d ", v.pin_code)
+	-- No trailing space on the last field, as the lisp has it: it appends
+	-- "1" or "0" rather than going through the formatter.
+	out[#out + 1] = v.pin_en and "1" or "0"
+
+	return table.concat(out)
+end
+
+function M.send_cfg()
+	local s = M.cfg_string()
+	vesc.send_data(s)
+	return s
+end
+
 --- factory defaults ---
 
 -- Written to eeprom rather than merely held, so the next boot reads them back

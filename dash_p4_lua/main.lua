@@ -133,6 +133,30 @@ comms.use_gnss_speed = config.gnss_use_speed
 
 require("lib.state").light_on = config.light_on_default
 
+--- what the package UI calls ---
+--
+-- Globals, because the UI reaches them over the REPL channel and a REPL line
+-- is the whole message: ui.qml sends `settings_set("theme", 3)` the way the
+-- lisp package sends `(settings-set 'theme 3)`.
+--
+-- Three entry points, the same three the lisp dash exposes. The UI has no
+-- other way in and needs no other.
+local apply = require("lib.apply")
+
+function send_cfg()
+	return apply.send_cfg()
+end
+
+function settings_set(name, val)
+	apply.set(name, val, config)
+	return true
+end
+
+function settings_reset()
+	apply.reset(config)
+	return true
+end
+
 --- go ---
 
 dash.start(config)
