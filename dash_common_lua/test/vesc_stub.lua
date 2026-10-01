@@ -65,6 +65,36 @@ function vesc.color_scale(c, s)
 	return pack(sc(16), sc(8), sc(0), sc(24))
 end
 
+-- eeprom, as 32 slots of either an integer or a float.
+--
+-- The firmware's eeprom-read-i on a slot that has never been written returns
+-- nil; the lisp test stub returns 0 instead, and the comment on
+-- setting-clamp records what that cost -- a nil compared with = is a type
+-- error that took settings-load down and left the dash dead before it drew
+-- anything. So this stub returns nil for an unwritten slot, which is what the
+-- hardware does and what the guards have to survive.
+vesc.eeprom = {}
+
+function vesc.eeprom_read_i(addr)
+	local v = vesc.eeprom[addr]
+	if v == nil then return nil end
+	return math.floor(v)
+end
+
+function vesc.eeprom_read_f(addr)
+	return vesc.eeprom[addr]
+end
+
+function vesc.eeprom_store_i(addr, v)
+	vesc.eeprom[addr] = math.floor(v)
+	return true
+end
+
+function vesc.eeprom_store_f(addr, v)
+	vesc.eeprom[addr] = v
+	return true
+end
+
 -- A monotonic clock in seconds, so modules that take systime work unchanged.
 local t0 = os.clock()
 function vesc.systime() return os.clock() - t0 end
