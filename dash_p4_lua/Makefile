@@ -48,6 +48,19 @@ dash_p4_lua.luapkg: main.lua config.lua version.lua $(LIB)
 upload: dash_p4_lua.luapkg
 	python3 $(SCRIPT) $(PORT) upload dash_p4_lua.luapkg
 
+# The package, installed the way a user would install it. Needs a vesc_tool
+# built from this fork: --installPkg and pkgLua are both new.
+#
+# XDG_DATA_HOME is redirected because a VESC Tool that has run before leaves a
+# downloaded res_config.rcc in the real one, and that resource shadows the
+# built-in config -- the tool then reports no supported firmwares and refuses
+# to connect. Pointing it at an empty directory is the whole workaround.
+install: dash_p4_lua.vescpkg
+	mkdir -p $(CURDIR)/.vt-home
+	XDG_DATA_HOME=$(CURDIR)/.vt-home QT_QPA_PLATFORM=offscreen \
+		$(VESC_TOOL) --offscreen --vescPort $(PORT) \
+		--installPkg dash_p4_lua.vescpkg
+
 version.lua: version.lua.in version
 	sed "s/{{VERSION}}/$(VERSION)/g" $< > $@
 
@@ -71,5 +84,6 @@ test:
 
 clean:
 	rm -f dash_p4_lua.vescpkg dash_p4_lua.luapkg README-gen.md ui.qml version.lua
+	rm -rf .vt-home
 
-.PHONY: all clean test upload
+.PHONY: all clean test upload install

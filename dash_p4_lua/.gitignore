@@ -3,3 +3,4 @@ ui.qml
 README-gen.md
 *.luapkg
 *.vescpkg
+.vt-home/
