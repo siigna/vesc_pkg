@@ -33,31 +33,55 @@ OUT=/tmp/dash_e2e
 
 mkdir -p "$OUT"
 
-python3 "$VE/tools/luapack.py" \
-    --import-root .. --import-root ../.. \
-    --asset font120="$FONTS/roboto-bold-120-4c.bin" \
-    --asset font40="$FONTS/roboto-bold-40-4c.bin" \
-    --asset font24="$FONTS/roboto-bold-24-4c.bin" \
-    --asset font18="$FONTS/roboto-bold-18-4c.bin" \
-    -o "$OUT/dash_p4.luapkg" dash_p4.lua >/dev/null || exit 1
-
-# One run emits every frame, through vesc.save_frame. final.ppm is whatever
-# was last drawn and is not compared; it exists because render_host takes an
-# output path.
-"$RENDER" "$OUT/dash_p4.luapkg" "$OUT/final.ppm" 800 480 || exit 1
-
 CASES="page0 page1 page2 page3 page4 page5 page6 page7 page8 page9 page10
        live_hold sig_request theme_light slot_rules"
 
 fail=0
-for n in $CASES; do
-    printf '%-12s ' "$n"
-    out=$(python3 "$DIFF" "$GOLDEN/p4_$n.png" "$OUT/p4_$n.ppm" --tol 0 2>&1) || {
-        echo "diff failed"; fail=1; continue
-    }
-    echo "$out" | grep -E 'differing at all' | sed 's/^ *//'
-    echo "$out" | grep -qE 'over tolerance 0: 0 \(allowed 0\)' || fail=1
-done
+
+# Both boards, from one harness and one view layer. The assets are named by
+# slot because the sizes differ: the speed readout is 120 pixels on the wide
+# panel and 108 on the square one.
+#
+# That the same code renders both, pixel for pixel against each board's own
+# goldens, is the parity claim worth making -- a view layer that only matched
+# on the panel it was written against would have proved much less.
+render_board() {
+    local board=$1 w=$2 h=$3 fontdir=$4 speed=$5 big=$6 mid=$7 small=$8
+
+    python3 "$VE/tools/luapack.py" \
+        --import-root .. --import-root ../.. \
+        --asset font_speed="$fontdir/$speed" \
+        --asset font_big="$fontdir/$big" \
+        --asset font_mid="$fontdir/$mid" \
+        --asset font_small="$fontdir/$small" \
+        -o "$OUT/dash_$board.luapkg" dash_board.lua >/dev/null || return 1
+
+    # One run emits every frame, through vesc.save_frame. final.ppm is
+    # whatever was last drawn and is not compared; it exists because
+    # render_host takes an output path.
+    "$RENDER" "$OUT/dash_$board.luapkg" "$OUT/final_$board.ppm" \
+        "$w" "$h" "$board" || return 1
+
+    echo
+    echo "--- $board, ${w}x${h}"
+    for n in $CASES; do
+        printf '%-12s ' "$n"
+        out=$(python3 "$DIFF" "$GOLDEN/${board}_$n.png" \
+                "$OUT/${board}_$n.ppm" --tol 0 2>&1) || {
+            echo "diff failed"; fail=1; continue
+        }
+        echo "$out" | grep -E 'differing at all' | sed 's/^ *//'
+        echo "$out" | grep -qE 'over tolerance 0: 0 \(allowed 0\)' || fail=1
+    done
+}
+
+render_board p4 800 480 "$PKG/dash_p4/font" \
+    roboto-bold-120-4c.bin roboto-bold-40-4c.bin \
+    roboto-bold-24-4c.bin roboto-bold-18-4c.bin
+
+render_board s3 480 480 "$PKG/dash_s3/font" \
+    roboto-bold-108-4c.bin roboto-bold-40-4c.bin \
+    roboto-bold-24-4c.bin roboto-bold-16-4c.bin
 
 # The boot log page has no golden, because there is no lisp boot log to render
 # one from. It gets a measurement instead: every row has to carry ink, and
@@ -97,6 +121,6 @@ echo "$reg" | grep -q 'label agreement: 0 points' || fail=1
 [ -n "${KEEP:-}" ] || rm -f "$OUT"/*.ppm "$OUT"/*.luapkg
 
 if [ $fail -eq 0 ]; then
-    echo "all 15 frames identical to the shipped goldens"
+    echo "all 15 frames identical to the shipped goldens, on both boards"
 fi
 exit $fail

@@ -57,10 +57,38 @@ local pages = require("lib.pages")
 
 --- the board ---
 
+-- Which board profile to render. The two differ only in these numbers, which
+-- is the claim the comparison tests: one view layer, two panels.
+local BOARD = arg[1] or "p4"
+
+-- The assets are named by slot rather than by size, because the two boards
+-- use different sizes for the same slot: the speed readout is 120 pixels on
+-- the wide panel and 108 on the square one, and the small font is 18 against
+-- 16. run_e2e.sh packs each board with its own files under these keys.
+local PROFILES = {
+	p4 = {
+		disp_w = 800, disp_h = 480,
+		strip_h = 58, speed_h = 145, page_h = 120,
+		page_cols = 4, page_row_h = 44,
+	},
+	-- From dash_s3/config.lisp. Square panel, so the page area is two
+	-- columns of four rows where the wide one is four of two.
+	s3 = {
+		disp_w = 480, disp_h = 480,
+		strip_h = 54, speed_h = 130, page_h = 144,
+		page_cols = 2, page_row_h = 36,
+	},
+}
+
+local prof = PROFILES[BOARD]
+if not prof then
+	error("unknown board profile: " .. tostring(BOARD))
+end
+
 local cfg = {
-	disp_w = 800, disp_h = 480,
-	strip_h = 58, speed_h = 145, page_h = 120,
-	page_cols = 4, page_row_h = 44,
+	disp_w = prof.disp_w, disp_h = prof.disp_h,
+	strip_h = prof.strip_h, speed_h = prof.speed_h, page_h = prof.page_h,
+	page_cols = prof.page_cols, page_row_h = prof.page_row_h,
 
 	metric_speeds = true, metric_temps = true,
 	battery_hot = 55.0, esc_hot = 80.0, motor_hot = 80.0,
@@ -80,14 +108,14 @@ for k, v in pairs(cfg) do shared[k] = v end
 local L = vs.set_layout(cfg)
 vp.set_layout(L)
 
-vs.font_speed = vesc.font_load(vesc.asset("font120"))
-vs.font_24 = vesc.font_load(vesc.asset("font24"))
-vs.font_16 = vesc.font_load(vesc.asset("font18"))
+vs.font_speed = vesc.font_load(vesc.asset("font_speed"))
+vs.font_24 = vesc.font_load(vesc.asset("font_mid"))
+vs.font_16 = vesc.font_load(vesc.asset("font_small"))
 vs.drive_mode_names = {"REVERSE", "NEUTRAL", "ECO", "NORMAL", "SPORT"}
 vs.light_on_is_highbeam = false
 vs.overlay_showing = pages.overlay_showing
 
-vp.font_40 = vesc.font_load(vesc.asset("font40"))
+vp.font_40 = vesc.font_load(vesc.asset("font_big"))
 vp.font_24 = vs.font_24
 vp.font_16 = vs.font_16
 
@@ -251,7 +279,7 @@ for p = 0, #pages.pages - 1 do
 	else
 		vs.step()
 	end
-	vesc.save_frame(string.format("%s/p4_page%d.ppm", OUT, p))
+	vesc.save_frame(string.format("%s/%s_page%d.ppm", OUT, BOARD, p))
 end
 
 --- the live page with a hold over cell 1 ---
@@ -265,7 +293,7 @@ vp.btn_hold_region = 1
 vp.btn_hold_progress = 0.7
 vp.page_live(true)
 vp.page_live(false)
-vesc.save_frame(OUT .. "/p4_live_hold.ppm")
+vesc.save_frame(OUT .. "/" .. BOARD .. "_live_hold.ppm")
 
 print("hold cell", vp.live_geom.hit(vp.touch_x, vp.touch_y))
 
@@ -279,7 +307,7 @@ signals.req = signals.HAZARD | signals.BEAM
 state.view_force_static = true
 vs.frame()
 vs.step()
-vesc.save_frame(OUT .. "/p4_sig_request.ppm")
+vesc.save_frame(OUT .. "/" .. BOARD .. "_sig_request.ppm")
 
 signals.reported = function() return true end
 signals.req = 0
@@ -303,7 +331,7 @@ vs.frame()
 vs.step()
 vp.page_live(true)
 vp.page_live(false)
-vesc.save_frame(OUT .. "/p4_theme_light.ppm")
+vesc.save_frame(OUT .. "/" .. BOARD .. "_theme_light.ppm")
 
 --- one live page with a different colour rule in each cell ---
 --
@@ -327,6 +355,6 @@ vs.frame()
 vs.step()
 vp.page_live(true)
 vp.page_live(false)
-vesc.save_frame(OUT .. "/p4_slot_rules.ppm")
+vesc.save_frame(OUT .. "/" .. BOARD .. "_slot_rules.ppm")
 
 print("pages", #pages.pages, "page_num", state.page_num)
