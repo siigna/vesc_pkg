@@ -176,4 +176,34 @@ appdata.settings_reset = settings_reset
 
 dash.start(config)
 
+
+-- The UI channel.
+--
+-- NOT VERIFIED ON HARDWARE. The handler is installed -- vesc.on_app_data is a
+-- function and the registration runs -- and no packet ever reaches it: no
+-- reply, and not even the refusal print that a malformed command must
+-- produce. A minimal script registering on_app_data, on_can and a 20 ms timer
+-- receives packets on the same firmware, and so did a bare probe closure
+-- registered from this file, so it is neither the binding, the event rate nor
+-- the position of the call. What differs is the closure body, which should be
+-- irrelevant, so one of my observations is wrong rather than the explanation
+-- being subtle.
+--
+-- lib/appdata.lua itself is unit tested, 69 checks over every command and
+-- every malformed shape. What is unproven is delivery, not parsing.
+--
+-- Left here rather than reverted so the next attempt starts from working
+-- parsing and a known-bad delivery path. config.appdata_trace prints each
+-- packet as it arrives, which is the first thing to turn on.
+vesc.on_app_data(function(data)
+	local ok, res, why = pcall(appdata.handle, data)
+	if not ok then
+		print("app data raised:", res)
+	elseif not res then
+		-- Printed rather than replied to: a malformed packet is not
+		-- something to answer on a shared bus.
+		print("app data refused:", why)
+	end
+end)
+
 boot_log.step("dash up")

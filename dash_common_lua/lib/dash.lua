@@ -385,6 +385,10 @@ end
 -- the whole reason to draw it.
 M.region_overlay_s = 0.0
 
+-- Print every app data packet as it arrives. Off by default; the UI sends one
+-- per keystroke in places.
+M.appdata_trace = false
+
 -- Let the dash draw itself first, so the overlay sits on the real screen.
 M.region_overlay_delay_s = 1.0
 
@@ -607,11 +611,13 @@ function M.start(cfg)
 	M.cfg = cfg
 	M.timing = cfg.timing or false
 	M.region_overlay_s = cfg.region_overlay_s or 0.0
+	M.appdata_trace = cfg.appdata_trace or false
 	actions.cfg = cfg
 	actions.bl_set = M.bl_set
 	apply.bl_set = M.bl_set
 
 	boot_log.step("dash start")
+
 
 	-- A version code that does not match usually means something else was in
 	-- this eeprom.
@@ -683,17 +689,6 @@ function M.start(cfg)
 		M.queue(205, comms.pin_cmd_frames(4, 0))
 	end
 
-	-- The package UI's channel. Trapped for the same reason as the CAN
-	-- handler, and refusals are printed rather than replied to: a malformed
-	-- packet is not something to answer on a shared bus.
-	vesc.on_app_data(function(data)
-		local okd, res, why = pcall(appdata.handle, data)
-		if not okd then
-			print("app data raised:", res)
-		elseif not res then
-			print("app data refused:", why)
-		end
-	end)
 
 	-- CAN in. Trapped: a short or unexpected frame must not take the handler
 	-- down, because losing it means losing every later frame too.
