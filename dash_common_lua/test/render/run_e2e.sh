@@ -78,6 +78,22 @@ rows=$(echo "$geom" | sed 's/.*rows=\([0-9]*\).*/\1/')
 top=$(echo "$geom" | sed 's/.*top=\([0-9]*\).*/\1/')
 python3 check_log.py "$OUT/p4_log.ppm" "$top" "$line_h" "$rows" | tail -1 || fail=1
 
+# The touch region overlay, same arrangement: no lisp counterpart, so the
+# assertions are properties rather than pixels. The five boxes have to tile
+# the panel exactly, and every point inside a box has to belong to the region
+# that box is labelled with -- which is what makes the overlay a report of
+# input.region rather than a second copy of it that can drift.
+echo
+python3 "$VE/tools/luapack.py" \
+    --import-root .. --import-root ../.. \
+    --asset font18="$FONTS/roboto-bold-18-4c.bin" \
+    -o "$OUT/regions.luapkg" regions_p4.lua >/dev/null || exit 1
+
+reg=$("$RENDER" "$OUT/regions.luapkg" "$OUT/regions_final.ppm" 800 480) || exit 1
+echo "$reg" | grep -E '^(layout|tiling|label)'
+echo "$reg" | grep -q 'tiling: 0 gaps, 0 overlaps' || fail=1
+echo "$reg" | grep -q 'label agreement: 0 points' || fail=1
+
 [ -n "${KEEP:-}" ] || rm -f "$OUT"/*.ppm "$OUT"/*.luapkg
 
 if [ $fail -eq 0 ]; then

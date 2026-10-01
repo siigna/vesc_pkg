@@ -301,12 +301,16 @@ function M.boot_log_splash()
 	vesc.disp_clear(colors.bg)
 end
 
---- the tick ---
-
-M.n = 0
-
 -- Faults are reported and swallowed. See the note at the top: one raise here
 -- would take the timer down, and with it the whole UI.
+--
+-- guard is a local, so it has to be defined above everything that calls it.
+-- That is not style: with this block below the region overlay, `guard` inside
+-- region_step resolved as a global, which is nil, and calling it took down
+-- the tick before anything was drawn. The symptom was an overlay that never
+-- appeared while the timing showed the views correctly standing down for
+-- it -- so the state machine looked right and the thing that would have
+-- reported the fault was the thing that was missing.
 M.fail_count = {}
 
 --- timing ---
@@ -364,6 +368,151 @@ function M.timing_reset()
 	M.job_ticks = 0
 end
 
+--- the touch region overlay ---
+--
+-- The four virtual buttons, drawn over the running dash for a few seconds so
+-- the regions can be seen rather than inferred from the source.
+--
+-- After the dash is up, not during bring-up: the point is to show where the
+-- regions fall on the screen as it actually looks, and the boot log has the
+-- panel to itself.
+--
+-- Every label is read back out of input.region at the point it is drawn, so
+-- the overlay reports the map rather than restating it. If the two ever
+-- disagree -- a panel reporting mirrored coordinates, a layout change that
+-- moved nav_y -- the overlay shows the region that is really there, which is
+-- the whole reason to draw it.
+M.region_overlay_s = 0.0
+
+-- Let the dash draw itself first, so the overlay sits on the real screen.
+M.region_overlay_delay_s = 1.0
+
+M.region_state = nil
+M.region_until = 0.0
+
+-- One region's box and label. x, y, w, h is the area; the text comes from
+-- whatever input.region says about its centre.
+function M.region_box(x, y, w, h)
+	local cx = x + w // 2
+	local cy = y + h // 2
+	local r = input.region(cx, cy)
+
+	local a = r and settings.values.btn_short[r + 1] or 0
+	local al = r and settings.values.btn_long[r + 1] or 0
+
+	local img = vesc.img_buffer("indexed4", w, h)
+	img:clear()
+	img:rectangle(0, 0, w - 1, h - 1, 1, false, 1, 0)
+
+	local function name(id)
+		local l = vp.shade_label(id)
+		return l ~= "" and l or ("action " .. id)
+	end
+
+	local _, cap = M.font_16:glyph_dims("D")
+	local line_h = cap + 6
+
+	-- As many rows as fit, and a compact single line when only one does.
+	-- The nav strip is 35 pixels on this panel, which is one row: laying out
+	-- four and letting the rest fall outside drew two of them on top of each
+	-- other and the border, because the baseline arithmetic happily goes
+	-- negative.
+	local fit = h // line_h
+	if fit < 1 then
+		fit = 1
+	end
+
+	local rows
+	if fit == 1 then
+		rows = {string.format("REGION %s - %s", tostring(r), name(a))}
+	else
+		rows = {
+			string.format("REGION %s", tostring(r)),
+			"tap: " .. name(a),
+			"hold: " .. name(al),
+			string.format("x %d..%d  y %d..%d", x, x + w - 1, y, y + h - 1),
+		}
+		while #rows > fit do
+			table.remove(rows)
+		end
+	end
+
+	local top = h // 2 - (#rows * line_h) // 2
+	if top < 0 then
+		top = 0
+	end
+
+	for i, txt in ipairs(rows) do
+		local tw = M.font_16:measure(txt)
+		local tx = (w - tw) // 2
+		if tx < 2 then
+			tx = 2
+		end
+		du.ttf_txt_left(txt, M.font_16, img, tx, top + (i - 1) * line_h,
+			{0, 1, 2, 3})
+	end
+
+	vesc.disp_render(img, x, y, colors.accent_aa)
+end
+
+function M.region_overlay()
+	local L = vs.layout
+
+	-- The same arithmetic input.region uses, in the same order. The thirds
+	-- are the part that matters: 2 * (disp_w / 3) is 532 on an 800-wide
+	-- panel where (2 * disp_w) / 3 is 533, and the boundary is the first.
+	local half = L.disp_w // 2
+	local third = L.disp_w // 3
+	local nav = L.nav_y
+	local strip_h = L.disp_h - nav
+
+	-- Above the nav strip: two halves.
+	M.region_box(0, 0, half, nav)
+	M.region_box(half, 0, L.disp_w - half, nav)
+
+	-- The strip: three thirds, the last taking the remainder so the boxes
+	-- cover the panel exactly rather than leaving a column at the edge.
+	M.region_box(0, nav, third, strip_h)
+	M.region_box(third, nav, 2 * third - third, strip_h)
+	M.region_box(2 * third, nav, L.disp_w - 2 * third, strip_h)
+end
+
+-- Drive it from the tick. Three states: waiting for the dash to settle,
+-- showing, and done. While it is showing the views are skipped, the way they
+-- are under the quick shade -- and for the same reason, which is that they
+-- would otherwise repaint over it a field at a time.
+function M.region_step(secs)
+	if M.region_overlay_s <= 0.0 or M.region_state == "done" then
+		return false
+	end
+
+	if M.region_state == nil then
+		if secs < M.region_overlay_delay_s then
+			return false
+		end
+		M.region_state = "showing"
+		M.region_until = secs + M.region_overlay_s
+		guard("region_overlay", M.region_overlay)
+		return true
+	end
+
+	if secs >= M.region_until then
+		M.region_state = "done"
+		-- Closing repaints the lot: the views' dirty tracking was paused and
+		-- has no idea what the overlay covered.
+		state.view_force_static = true
+		state.view_force_pages = true
+		return false
+	end
+
+	return true
+end
+
+--- the tick ---
+
+M.n = 0
+
+
 -- The order within a tick is the order the lisp's threads would have settled
 -- into, and two parts of it are not arbitrary. Input runs first so a press is
 -- acted on in the same tick it was read rather than the next. The views run
@@ -414,11 +563,15 @@ function M.tick()
 		guard("worker", M.worker_step)
 	end
 
-	if n % d.static == 0 then
+	-- The region overlay covers the whole panel, so the views stand down
+	-- while it is up rather than drawing through it.
+	local overlay = M.region_step(n * M.period_ms / 1000.0)
+
+	if not overlay and n % d.static == 0 then
 		guard("static", M.static_step)
 	end
 
-	if n % d.pages == 0 then
+	if not overlay and n % d.pages == 0 then
 		guard("pages", pages.step)
 	end
 
@@ -452,6 +605,7 @@ end
 function M.start(cfg)
 	M.cfg = cfg
 	M.timing = cfg.timing or false
+	M.region_overlay_s = cfg.region_overlay_s or 0.0
 	actions.cfg = cfg
 	actions.bl_set = M.bl_set
 	apply.bl_set = M.bl_set

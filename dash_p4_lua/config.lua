@@ -76,6 +76,11 @@ return {
 	-- "the dash uses N%" says nothing about which job to look at.
 	timing = true,
 
+	-- Show the touch regions over the running dash for this long, once, a
+	-- second after it comes up. Zero is off. Every label is read back out of
+	-- input.region, so what it draws is the map that is really in force.
+	region_overlay_s = 5.0,
+
 	-- Prefer GNSS speed over the controller's estimate. Off: this board has
 	-- no GNSS of its own.
 	gnss_use_speed = false,

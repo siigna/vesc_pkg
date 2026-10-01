@@ -90,6 +90,11 @@ local function instrument()
 	dash.pending = {}
 end
 
+-- From here on, reading an undefined global is an error. This file drives
+-- M.tick, which is where a local referenced above its own definition shows
+-- up -- as a nil call, at runtime, and nowhere else.
+t.strict_globals()
+
 --- the dividers ---
 --
 -- Ten base ticks is 200 ms, which is one period of the slowest job.
@@ -327,5 +332,79 @@ dash.tick()
 t.ok("the touch point reached the view", vp.touch_x == 123 and vp.touch_y == 234)
 t.ok("so did the hold region",           vp.btn_hold_region == 2)
 t.near("and its progress",               vp.btn_hold_progress, 0.75)
+
+--- the touch region overlay ---
+--
+-- A state machine over the tick: wait for the dash to settle, show, then
+-- force a repaint. While it is showing the views stand down, the way they do
+-- under the quick shade, because they would otherwise repaint over it a
+-- field at a time.
+--
+-- Driven through M.tick rather than by calling region_step, so the test
+-- covers the wiring. That is what catches a nil guard: the overlay is the
+-- only job dispatched from outside the guarded list.
+instrument()
+dash.region_overlay_s = 5.0
+dash.region_overlay_delay_s = 1.0
+dash.region_state = nil
+dash.region_until = 0.0
+
+local drew = 0
+dash.region_overlay = function() drew = drew + 1 end
+dash.static_step = counter("static")
+pages.step = counter("pages")
+
+-- The boundaries are exact, so the counts are too: at 20 ms a tick, the
+-- delay of 1.0 s falls on tick 50 and the 5.0 s window ends on tick 300.
+-- Asserting "the first second" as 50 ticks had it fire inside the window it
+-- was supposed to precede.
+for _ = 1, 49 do dash.tick() end
+t.ok("nothing drawn before the delay elapses", drew == 0)
+t.ok("and the views ran",                      (ran.static or 0) > 0)
+
+-- Tick 50 is the first at or past the delay.
+local static_at_show = ran.static
+dash.tick()
+t.ok("drawn on the tick the delay elapses", drew == 1)
+
+-- Well inside the window: still one draw, views still down.
+for _ = 1, 100 do dash.tick() end
+t.ok("not redrawn every tick", drew == 1)
+t.ok("the views stood down",   ran.static == static_at_show)
+t.ok("pages too",              ran.pages == static_at_show)
+
+-- Still inside at tick 299.
+for _ = 1, 149 do dash.tick() end
+t.ok("still one draw",   drew == 1)
+t.ok("views still down", ran.static == static_at_show)
+
+-- Tick 300 is the first at or past the end. The views come back and the
+-- repaint is forced, because their dirty tracking was paused and has no idea
+-- what the overlay covered.
+state.view_force_static = false
+state.view_force_pages = false
+dash.tick()
+t.ok("a static repaint was forced", state.view_force_static)
+t.ok("and a page repaint",          state.view_force_pages)
+
+for _ = 1, 10 do dash.tick() end
+t.ok("the views resumed", ran.static > static_at_show)
+
+-- And it does not come back.
+drew = 0
+for _ = 1, 400 do dash.tick() end
+t.ok("the overlay is one-shot", drew == 0)
+
+-- Off by default: a dash being ridden should not cover itself every boot.
+instrument()
+dash.region_overlay_s = 0.0
+dash.region_state = nil
+dash.static_step = counter("static")
+drew = 0
+for _ = 1, 400 do dash.tick() end
+t.ok("disabled: never drawn", drew == 0)
+t.ok("and the views run throughout", (ran.static or 0) > 0)
+
+t.unstrict_globals()
 
 t.report("dash")

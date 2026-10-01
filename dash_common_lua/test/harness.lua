@@ -29,4 +29,27 @@ function M.report(name)
 	end
 end
 
+-- Make a read of an undefined global an error.
+--
+-- Lua resolves an unknown name to nil silently, so a local referenced before
+-- its definition -- or a typo -- is a nil call at the point of use and
+-- nowhere else. That cost a round trip: `guard` in lib/dash.lua was defined
+-- below one of its callers, so inside that caller it resolved as a global,
+-- and calling nil took down the tick. luac -p cannot see it, because the
+-- lookup is legal; only running the code finds it.
+--
+-- Opt-in per test file, after the requires, so a module that legitimately
+-- writes a global at load time is unaffected.
+function M.strict_globals()
+	setmetatable(_G, {
+		__index = function(_, k)
+			error("read of undefined global '" .. tostring(k) .. "'", 2)
+		end,
+	})
+end
+
+function M.unstrict_globals()
+	setmetatable(_G, nil)
+end
+
 return M
