@@ -32,6 +32,11 @@
 (import "../dash_common/lib/statistics.lisp" 'code-statistics)
 (read-eval-program code-statistics)
 
+; The board's own log, which the log page draws. Loaded before the views,
+; which call into it.
+(import "../dash_common/lib/boot-log.lisp" 'code-boot-log)
+(read-eval-program code-boot-log)
+
 (import "../dash_common/lib/draw-utils.lisp" 'code-draw-utils)
 (read-eval-program code-draw-utils)
 

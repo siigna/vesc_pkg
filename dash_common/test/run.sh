@@ -47,6 +47,17 @@ for f in ../views/*.lbm; do strip_const "$f" "build/common/views/$(basename "$f"
 # walk-requested, pulled out of the real main_body rather than copied into the
 # test, so the test cannot drift from what ships. Importing main_body whole
 # would drag in the views and the display.
+# region-box and region-overlay, for the overlay render. Extracted rather than
+# copied for the same reason as everything else here: the render is compared
+# against the Lua dash's same overlay, pixel for pixel, and a copy of the
+# source would let the two drift while still matching each other.
+awk '/^\(defun region-box /,/^\}\)/' ../main_body.lisp > build/common/region_fn.lisp
+awk '/^\(defun region-overlay /,/^\}\)/' ../main_body.lisp >> build/common/region_fn.lisp
+if [ "$(grep -c 'defun region' build/common/region_fn.lisp)" != 2 ]; then
+    echo "could not extract the region overlay from main_body.lisp" >&2
+    exit 1
+fi
+
 awk '/^\(defun walk-requested /,/^\}\)/' ../main_body.lisp > build/common/walk_fn.lisp
 if [ ! -s build/common/walk_fn.lisp ]; then
     echo "could not extract walk-requested from main_body.lisp" >&2

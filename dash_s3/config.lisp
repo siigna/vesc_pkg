@@ -6,6 +6,12 @@
 (def config-gnss-use-speed false) ; Prefer GPS speed over ESC speed
 (def config-code-server true) ; Enable remote code execution
 
+; Show the touch regions over the running dash for this long, once, a moment
+; after it comes up. Zero is off. Every label is read back out of
+; touch-region, so what it draws is the map that is really in force.
+(def config-region-overlay-s 5.0)
+(def config-region-overlay-delay-s 1.0)
+
 (def config-battery-hot 55.0) ; Displays warning indicator, Degrees C
 (def config-esc-hot 80.0) ; Degrees C
 (def config-motor-hot 80.0) ; Displays warning indicator, Degrees C

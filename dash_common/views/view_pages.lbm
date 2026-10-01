@@ -927,7 +927,12 @@
 
 ; Either of the two views that cover the whole panel rather than just the page
 ; area. The static strip stops drawing while one is up.
-(defun overlay-showing () (or (shade-showing) (pin-showing)))
+; A startup overlay covering the whole panel, drawn by main_body for a few
+; seconds. Held as a flag rather than derived from page-now because it is not
+; a page: nothing can navigate to it and it never comes back.
+(def covered-by-startup false)
+
+(defun overlay-showing () (or (shade-showing) (pin-showing) covered-by-startup))
 
 (defun get-page-shade-state () (list
         drive-mode light-on cruise-control-active conf-dirty
@@ -1203,12 +1208,21 @@
         (var last-page 100)	; forces s = true on the first pass
 
         (loopwhile t {
-                (var page-now-sample page-now)
-                (var curr-page (ix pages page-now-sample))
-                (var force view-force-pages)
-                (setq view-force-pages false)
-                (if curr-page (curr-page (or force (not (= last-page page-now-sample)))))
-                (setq last-page page-now-sample)
+                ; A startup overlay covers the page area as well, so the page
+                ; stands down the way the static strip already does -- it would
+                ; otherwise repaint over it a field at a time. The force flag
+                ; is held so closing the overlay repaints the lot, because the
+                ; dirty tracking was paused and has no idea what was covered.
+                (if covered-by-startup
+                    (setq view-force-pages true)
+                    {
+                        (var page-now-sample page-now)
+                        (var curr-page (ix pages page-now-sample))
+                        (var force view-force-pages)
+                        (setq view-force-pages false)
+                        (if curr-page (curr-page (or force (not (= last-page page-now-sample)))))
+                        (setq last-page page-now-sample)
+                    })
                 (sleep 0.05)
         })
 })

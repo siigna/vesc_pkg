@@ -11,6 +11,7 @@
 ;   config.lisp       disp-w disp-h strip-h speed-h page-h page-cols
 ;                     config-dm-pool config-touch-transforms
 ;                     config-btn-actions-short config-btn-actions-long
+;                     config-region-overlay-s config-region-overlay-delay-s
 ;   lib/*             the shared library and the board's own input.lisp
 ;   views/*           view_static and view_pages
 ;   fonts             font-speed font-40 font-24 font-16
@@ -317,6 +318,126 @@
         })
 })
 
+; --- the touch region overlay ----------------------------------------------
+;
+; The four virtual buttons, drawn over the running dash for a few seconds so
+; the regions can be seen rather than inferred from the source. Ported back
+; from dash_common_lua/lib/dash.lua, where it was written first.
+;
+; Every label is read back out of touch-region at the point it is drawn, so
+; this reports the map rather than restating it. If the two ever disagree -- a
+; panel reporting mirrored coordinates, a layout change that moved nav-y --
+; the overlay shows the region that is really there, which is the whole reason
+; to draw it.
+;
+; Unlike the Lua dash this can simply block: the views run in their own
+; threads and stand down on covered-by-startup, where the Lua engine has one
+; timer and needed a phase machine to avoid holding it.
+; config-region-overlay-s and config-region-overlay-delay-s come from the
+; board, like every other config-* here. Deliberately not defaulted in this
+; file: main_body is loaded last, so a def here would overwrite what the board
+; config set rather than fall back to it.
+
+@const-start
+
+; One region's box and label. The text comes from whatever touch-region says
+; about the centre of the area being drawn.
+(defun region-box (x y w h) {
+        (var cx (+ x (/ w 2)))
+        (var cy (+ y (/ h 2)))
+        (var r (touch-region cx cy))
+
+        (var a (if r (ix btn-actions-short r) 0))
+        (var al (if r (ix btn-actions-long r) 0))
+
+        (var img (img-buffer dm-pool 'indexed4 w h))
+        (img-clear img)
+        (img-rectangle img 0 0 (- w 1) (- h 1) 1)
+
+        (var cap (second (ttf-glyph-dims font-16 "D")))
+        (var line-h (+ cap 6))
+
+        ; As many rows as fit, and one compact line when only one does. The
+        ; nav strip is thirty-odd pixels, which is one row: laying out four and
+        ; letting the rest fall outside drew two of them over each other and
+        ; the border, because the baseline arithmetic happily goes negative.
+        (var fit (/ h line-h))
+        (if (< fit 1) (setq fit 1))
+
+        ; shade-label is empty for an action with no button on the quick
+        ; shade, including action 0. Naming the number instead says "nothing
+        ; bound" where a blank line reads as a label that failed to draw.
+        (var name (fn (id) {
+                (var l (shade-label id))
+                (if (eq l "") (str-merge "action " (str-from-n id "%d")) l)
+        }))
+
+        (var rows (if (= fit 1)
+            (list (str-merge "REGION " (if r (str-from-n r "%d") "-")
+                             " - " (name a)))
+            (list
+                (str-merge "REGION " (if r (str-from-n r "%d") "-"))
+                (str-merge "tap: " (name a))
+                (str-merge "hold: " (name al))
+                (str-merge "x " (str-from-n x "%d") ".." (str-from-n (+ x w -1) "%d")
+                           "  y " (str-from-n y "%d") ".." (str-from-n (+ y h -1) "%d")))))
+
+        (if (> (length rows) fit)
+            (setq rows (take rows fit)))
+
+        (var top (- (/ h 2) (/ (* (length rows) line-h) 2)))
+        (if (< top 0) (setq top 0))
+
+        (looprange i 0 (length rows) {
+                (var txt (ix rows i))
+                (var tw (first (ttf-text-dims font-16 txt)))
+                (var tx (/ (- w tw) 2))
+                (if (< tx 2) (setq tx 2))
+                (ttf-text img tx (+ top (* i line-h) cap) '(0 1 2 3) font-16 txt)
+        })
+
+        (disp-render img x y colors-accent-aa)
+})
+
+(defun region-overlay () {
+        ; The same arithmetic touch-region uses, in the same order. The thirds
+        ; are the part that matters: 2 * (disp-w / 3) is 532 on an 800 wide
+        ; panel where (2 * disp-w) / 3 is 533, and the boundary is the first.
+        (var half (/ disp-w 2))
+        (var third (/ disp-w 3))
+        (var strip-h (- disp-h nav-y))
+
+        ; Above the nav strip: two halves.
+        (region-box 0 0 half nav-y)
+        (region-box half 0 (- disp-w half) nav-y)
+
+        ; The strip: three thirds, the last taking the remainder so the boxes
+        ; cover the panel exactly rather than leaving a column at the edge.
+        (region-box 0 nav-y third strip-h)
+        (region-box third nav-y third strip-h)
+        (region-box (* 2 third) nav-y (- disp-w (* 2 third)) strip-h)
+})
+
+; Shown once, a moment after the dash comes up, then the views take the panel
+; back. Its own thread so main can finish: the views are already running by
+; the time this draws, which is the point -- the regions go over the real
+; screen rather than over nothing.
+(defun region-overlay-thread () {
+        (sleep config-region-overlay-delay-s)
+
+        (setq covered-by-startup true)
+        (trap (region-overlay))
+        (sleep config-region-overlay-s)
+        (setq covered-by-startup false)
+
+        ; Closing repaints the lot: the views' dirty tracking was paused and
+        ; has no idea what the overlay covered.
+        (setq view-force-static true)
+        (setq view-force-pages true)
+})
+
+@const-end
+
 (defun show-splash () {
         (print "Splash")
 
@@ -496,6 +617,11 @@
 
                 (sleep 0.1)
         })
+
+        ; The region overlay, if the board asks for one. Its own thread so the
+        ; views are already drawing by the time it goes over them.
+        (if (> config-region-overlay-s 0.0)
+            (spawn 150 region-overlay-thread))
 
         (def init-complete true)
 
