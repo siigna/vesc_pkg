@@ -1,0 +1,5 @@
+version.lua
+ui.qml
+README-gen.md
+*.luapkg
+*.vescpkg

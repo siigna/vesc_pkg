@@ -48,6 +48,7 @@ local standalone = require("lib.standalone")
 local notify = require("lib.notify")
 local input = require("lib.input")
 local boot_log = require("lib.boot_log")
+local appdata = require("lib.appdata")
 local actions = require("lib.actions")
 local pages = require("lib.pages")
 local vp = require("lib.view_pages")
@@ -681,6 +682,18 @@ function M.start(cfg)
 	pin.on_unlock = function()
 		M.queue(205, comms.pin_cmd_frames(4, 0))
 	end
+
+	-- The package UI's channel. Trapped for the same reason as the CAN
+	-- handler, and refusals are printed rather than replied to: a malformed
+	-- packet is not something to answer on a shared bus.
+	vesc.on_app_data(function(data)
+		local okd, res, why = pcall(appdata.handle, data)
+		if not okd then
+			print("app data raised:", res)
+		elseif not res then
+			print("app data refused:", why)
+		end
+	end)
 
 	-- CAN in. Trapped: a short or unexpected frame must not take the handler
 	-- down, because losing it means losing every later frame too.

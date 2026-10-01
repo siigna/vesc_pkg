@@ -157,6 +157,21 @@ function settings_reset()
 	return true
 end
 
+-- The same three, for the package UI, which reaches them over custom app
+-- data rather than the REPL. appdata parses; these are what it calls.
+local appdata = require("lib.appdata")
+appdata.send_cfg = send_cfg
+appdata.settings_set = function(name, val)
+	-- Refused rather than written for a name not in the address map, so the
+	-- UI hears about a typo instead of reading back an unchanged value.
+	if not require("lib.settings").addrs[name] then
+		return false
+	end
+	apply.set(name, val, config)
+	return true
+end
+appdata.settings_reset = settings_reset
+
 --- go ---
 
 dash.start(config)

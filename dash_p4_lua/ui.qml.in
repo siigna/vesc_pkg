@@ -1,0 +1,1263 @@
+// Generated from dash_p4/ui.qml.in. The UI is the same; only the three
+// things it says to the dash differ.
+//
+// The lisp dash takes this channel as code -- its handler is
+// (eval (read data)) -- so the lisp UI sends "(settings-set 'theme 3)". The
+// Lua sandbox removes load, on the grounds that a script able to compile a
+// string at runtime defeats any static review of what was flashed, so the
+// Lua dash parses three commands instead:
+//
+//   cfg                 reply with the config packet
+//   set <name> <value>  write one setting and reload
+//   reset               restore the factory defaults
+//
+// The reply format is identical and byte-for-byte checked against the lisp's,
+// so everything below that reads it is untouched.
+//
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.3
+import Vedder.vesc.utility 1.0
+
+import Vedder.vesc.commands 1.0
+import Vedder.vesc.configparams 1.0
+
+Item {
+    id: mainItem
+    anchors.fill: parent
+    anchors.margins: 5
+
+    property Commands mCommands: VescIf.commands()
+
+    // Set while the controls are being populated from the display, so that
+    // the handlers below do not write the freshly read values straight back.
+    property bool loading: false
+
+    // One section on screen at a time. Scrolling past everything to reach
+    // one setting is the thing this avoids.
+    property int editing: 0
+
+    property int settingMask: 0xF
+    property int iconMask: 0x3F
+
+    // Walk assist and the session reset only work as long actions: one is held
+    // and the other uses the hold as its confirmation. They are offered for
+    // both so the list stays one list, and the display ignores them on a short
+    // press. Five of these were missing here, so they could not be bound at
+    // all.
+    property var actionNames: [
+        "Nothing", "Next page", "Previous page", "Settings page",
+        "Drive mode up", "Drive mode down", "Lights",
+        "Cruise control", "Toggle logging", "Reset session (hold)",
+        "Walk assist (hold)", "Save controller config",
+        "Revert controller config", "Quick shade",
+        "Hazard", "Indicate left", "Indicate right", "High beam",
+        "Horn (hold)", "Lock now"
+    ]
+    // Shared codes across the dashes. 7 (backlight) and 11 (sleep) are left
+    // out because this board has neither, so the dropdown index is mapped
+    // rather than used directly.
+    property var actionCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16,
+                               17, 18, 19, 20, 21, 22]
+
+    // The quick shade cannot hold anything, so its cells offer only the
+    // actions a tap can do.
+    property var shadeNames: [
+        "Empty", "Next page", "Previous page", "Settings page",
+        "Drive mode up", "Drive mode down", "Lights",
+        "Cruise control", "Toggle logging", "Save controller config",
+        "Revert controller config", "Close",
+        "Hazard", "Indicate left", "Indicate right", "High beam",
+        "Horn (blip)", "Lock now"
+    ]
+    property var shadeCodes: [0, 1, 2, 3, 4, 5, 6, 8, 9, 14, 15, 16,
+                              17, 18, 19, 20, 21, 22]
+
+    function shadeIndex(code) {
+        var ix = shadeCodes.indexOf(code)
+        return ix < 0 ? 0 : ix
+    }
+
+    function actionIndex(code) {
+        var ix = actionCodes.indexOf(code)
+        return ix < 0 ? 0 : ix
+    }
+
+    // One per setting-catalog row in lib/persistent-settings.lisp, in order.
+    property var rowNames: [
+        "Wheelie enable", "Wheelie angle start", "Wheelie angle end",
+        "Wheelie damping",
+        "Backlight bright", "Backlight dim",
+        "Battery warning", "Controller warning", "Motor warning",
+        "Metric speed", "Metric temperature", "Theme", "Smoothing"
+    ]
+
+    // Matches the region map in lib/input.lisp
+    property var regionNames: [
+        "Nav strip, left (SET)", "Screen, left half",
+        "Screen, right half, and nav right", "Nav strip, centre"
+    ]
+
+    // Index 0 is "whatever the theme says". It stores -1 rather than a colour,
+    // which is how an untouched cell already reads, so a theme change moves it.
+    // colorIndexOf falls back to 0 as well, so a colour that is not in this
+    // list shows as Theme instead of being misreported as one that is.
+    property var colorNames: [
+        "Theme", "Black", "White", "Cyan", "Orange", "Green", "Red",
+        "Blue", "Purple", "Yellow", "Grey"
+    ]
+
+    property var colorValues: [
+        -1, 0x000000, 0xFBFCFC, 0x00C8FF, 0xF05A22, 0x00C321, 0xFF0303,
+        0x1D7BE8, 0x9F20F1, 0xFFD400, 0x787878
+    ]
+
+    property var themeNames: ["Dark", "Amber", "Green", "Night", "Light"]
+
+    // Must stay in step with slot-colors in views/view_pages.lbm.
+    property var slotModeNames: [
+        "Fixed", "Ramp green to red", "Heat teal to red",
+        "Low is bad", "Green when negative"
+    ]
+
+    function colorIndexOf(v) {
+        for (var i = 0; i < colorValues.length; i++) {
+            if (colorValues[i] === v) {
+                return i
+            }
+        }
+        return 0
+    }
+
+    // Must stay in step with slot-catalog in lib/statistics.lisp, index for
+    // index: the stored setting is an index into that list. The twelve after
+    // Pitch were added later and had no entry here, so they could not be
+    // picked at all.
+    property var slotNames: [
+        "Speed", "Battery %", "Motor amps", "Battery amps", "Power",
+        "Voltage", "Motor temp", "ESC temp", "Pack temp", "Duty",
+        "Trip", "Odometer", "Energy used", "Regen", "Amp hours",
+        "Peak amps", "Top speed", "Pitch", "Min pack V", "Avg speed",
+        "Moving time", "Elapsed time", "SOC from volts", "SOC counted",
+        "SOC model", "Cadence", "Crank torque", "Rider power",
+        "Assist power", "Assist ratio"
+    ]
+
+    property var iconNames: [
+        "Turn signals", "High and low beam", "Kickstand",
+        "Temperature warning", "Fault warning", "Cruise control"
+    ]
+
+    property bool haveRead: false
+
+    // Custom app data, not the REPL: the firmware silently drops REPL
+    // commands sent within 0.5 s of each other. This path is quicker but not
+    // instant either, so commands are queued and paced rather than fired off
+    // as fast as the user can click.
+    property var sendQueue: []
+    property bool sendBusy: false
+
+    Timer {
+        id: sendTimer
+        interval: 350
+        repeat: false
+        onTriggered: sendPump()
+    }
+
+    function sendPump() {
+        if (sendQueue.length === 0) {
+            sendBusy = false
+            return
+        }
+        var q = sendQueue
+        var cmd = q.shift()
+        sendQueue = q
+        VescIf.commands().sendCustomAppData(cmd + "\0")
+        sendBusy = true
+        sendTimer.restart()
+    }
+
+    function send(cmd) {
+        var q = sendQueue
+        q.push(cmd)
+        sendQueue = q
+        if (!sendBusy) {
+            sendPump()
+        }
+    }
+
+    function setSetting(name, value) {
+        // The Lua dash's address map spells names with underscores where the
+        // lisp spells them with hyphens, and the rest of this file passes the
+        // lisp spelling. Converted here rather than at ninety call sites.
+        send("set " + name.replace(/-/g, "_") + " " + value)
+    }
+
+    function setMaskBit(bit, on) {
+        if (on) {
+            settingMask |= (1 << bit)
+        } else {
+            settingMask &= ~(1 << bit)
+        }
+        setSetting("setting-mask", settingMask)
+    }
+
+    function setIconBit(bit, on) {
+        if (on) {
+            iconMask |= (1 << bit)
+        } else {
+            iconMask &= ~(1 << bit)
+        }
+        setSetting("icon-mask", iconMask)
+    }
+
+    // Bit per entry of page-catalog in views/view_pages.lbm, in that order.
+    // Four of these were hard-coded check boxes, so the four pages added later
+    // could not be switched on from here at all.
+    property var pageNames: [
+        "Live", "Trip", "Session", "Battery", "PAS", "Chart",
+        "Controller", "Cells"
+    ]
+
+    function setPageMask() {
+        var m = 0
+        for (var i = 0; i < pageRepeater.count; i++) {
+            if (pageRepeater.itemAt(i).checked) {
+                m |= (1 << i)
+            }
+        }
+        // A mask of zero leaves the display with no page to show, and the
+        // firmware falls back to the first one. Say so here rather than
+        // letting it look like the setting did not take.
+        if (m === 0) {
+            m = 1
+            pageRepeater.itemAt(0).checked = true
+        }
+        setSetting("page-mask", m)
+    }
+
+    // Keeps asking until the display answers, so the page never shows its
+    // own defaults as if they were real values, and never writes them back.
+    Timer {
+        id: readPoll
+        interval: 700
+        running: true
+        repeat: true
+        onTriggered: {
+            if (haveRead) { running = false } else { send("cfg") }
+        }
+    }
+
+    Connections {
+        target: VescIf.commands()
+
+        function onCustomAppDataReceived(data) {
+            var str = data.toString()
+            if (!str.startsWith("cfg ")) { return }
+            // drop the tag so the indices below match cfg-cfg field order
+            var v = str.trim().split(" ").slice(1)
+            // 60 fields as of the PIN lock. The display and this page ship in
+            // one package, so a short string means a truncated frame rather
+            // than an older display, and indexing past the end would read
+            // undefined into a spin box.
+            if (v.length < 60) { return }
+
+            loading = true
+            speedMetric.checked = parseInt(v[0]) === 1
+            speedImperial.checked = parseInt(v[0]) !== 1
+            tempMetric.checked = parseInt(v[1]) === 1
+            tempImperial.checked = parseInt(v[1]) !== 1
+            battHot.value = Math.round(parseFloat(v[2]))
+            escHot.value = Math.round(parseFloat(v[3]))
+            motorHot.value = Math.round(parseFloat(v[4]))
+            // v[5] and v[6] are the backlight levels, which this board has no
+            // control over. Read and ignored so the indices below still line up.
+            driveModes.value = parseInt(v[7])
+
+            var pmask = parseInt(v[8])
+            for (var pg = 0; pg < pageRepeater.count; pg++) {
+                pageRepeater.itemAt(pg).checked = (pmask & (1 << pg)) !== 0
+            }
+
+            settingMask = parseInt(v[9])
+            for (var i = 0; i < rowRepeater.count; i++) {
+                rowRepeater.itemAt(i).checked =
+                    (settingMask & (1 << i)) !== 0
+            }
+
+            for (var b = 0; b < 4; b++) {
+                btnRepeater.itemAt(b).shortIndex = actionIndex(parseInt(v[10 + b]))
+                btnRepeater.itemAt(b).longIndex = actionIndex(parseInt(v[14 + b]))
+            }
+
+            escMode.currentIndex = parseInt(v[18])
+            escId.value = parseInt(v[19])
+            var live = parseInt(v[20]) === 1
+            var seenId = parseInt(v[21])
+            escState.text = (live
+                ? "Standalone, controller " +
+                  (seenId < 0 ? "not found" : seenId)
+                : "dash_esc detected")
+
+            iconMask = parseInt(v[22])
+            for (var ic = 0; ic < iconRepeater.count; ic++) {
+                iconRepeater.itemAt(ic).checked =
+                    (iconMask & (1 << ic)) !== 0
+            }
+
+            accentBox.currentIndex = colorIndexOf(parseInt(v[23]))
+            textBox.currentIndex = colorIndexOf(parseInt(v[24]))
+            themeBox.currentIndex = parseInt(v[47])
+            bgBox.currentIndex = colorIndexOf(parseInt(v[48]))
+            chartSrcBox.currentIndex = parseInt(v[49])
+            chartSecsBox.currentIndex = parseInt(v[50]) === 5 ? 0 : 1
+            // Stored as a fraction, edited in tenths.
+            smoothBox.value = Math.round(parseFloat(v[51]) * 10)
+            pinCode.value = parseInt(v[58])
+            pinEnable.checked = parseInt(v[59]) === 1
+            for (var sc = 0; sc < shadeRepeater.count; sc++) {
+                shadeRepeater.itemAt(sc).currentIndex =
+                    shadeIndex(parseInt(v[52 + sc]))
+            }
+            for (var sl = 0; sl < 4; sl++) {
+                var it = slotRepeater.itemAt(sl)
+                it.source = parseInt(v[25 + sl])
+                it.slotColor = colorIndexOf(parseInt(v[29 + sl]))
+                    it.ramp = parseInt(v[33 + sl])
+                it.rangeLo = parseInt(v[37 + sl])
+                it.rangeHi = parseInt(v[41 + sl])
+            }
+            battRampBox.checked = parseInt(v[45]) === 1
+            splashBox.checked = parseInt(v[46]) === 1
+
+            loading = false
+            haveRead = true
+            statusText.text = "Read from display"
+        }
+    }
+
+    ButtonGroup { id: speedGroup }
+    ButtonGroup { id: tempGroup }
+
+    ScrollView {
+        anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 4
+
+            Text {
+                color: Utility.getAppHexColor("lightText")
+                Layout.fillWidth: true
+                text: "Dash S3 Package"
+                font.weight: Font.Black
+                font.pointSize: 18
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 2
+                color: Utility.getAppHexColor("lightText")
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.bottomMargin: 4
+
+                Text {
+                    text: "Editing"
+                    color: Utility.getAppHexColor("lightText")
+                }
+
+                ComboBox {
+                    id: sectionBox
+                    Layout.fillWidth: true
+                    model: ["Live page", "Display", "Pages", "Hardware", "Touch"]
+                    onActivated: editing = currentIndex
+                }
+
+                Button {
+                    text: "Read"
+                    onClicked: {
+                        statusText.text = "Reading..."
+                        haveRead = false
+                        readPoll.running = true
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 3
+                title: "Units"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 3
+
+                        Text {
+                            text: "Speed"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        RadioButton {
+                            id: speedMetric
+                            ButtonGroup.group: speedGroup
+                            text: "km/h"
+                            checked: true
+                            onClicked: if (!loading) setSetting("units-metric", 1)
+                        }
+
+                        RadioButton {
+                            id: speedImperial
+                            ButtonGroup.group: speedGroup
+                            text: "MPH"
+                            onClicked: if (!loading) setSetting("units-metric", 0)
+                        }
+
+                        Text {
+                            text: "Temperature"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        RadioButton {
+                            id: tempMetric
+                            ButtonGroup.group: tempGroup
+                            text: "C"
+                            checked: true
+                            onClicked: if (!loading) setSetting("temps-metric", 1)
+                        }
+
+                        RadioButton {
+                            id: tempImperial
+                            ButtonGroup.group: tempGroup
+                            text: "F"
+                            onClicked: if (!loading) setSetting("temps-metric", 0)
+                        }
+                    }
+                                }
+            }
+
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 3
+                title: "Warning Thresholds"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+
+                        Text {
+                            text: "Battery"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: battHot
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 200
+                            editable: true
+                            onValueModified: if (!loading) setSetting("batt-hot", value.toFixed(1))
+                        }
+
+                        Text {
+                            text: "Controller"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: escHot
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 200
+                            editable: true
+                            onValueModified: if (!loading) setSetting("esc-hot", value.toFixed(1))
+                        }
+
+                        Text {
+                            text: "Motor"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: motorHot
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 200
+                            editable: true
+                            onValueModified: if (!loading) setSetting("motor-hot", value.toFixed(1))
+                        }
+
+                        Text {
+                            text: "Degrees C"
+                            color: Utility.getAppHexColor("lightText")
+                            font.pointSize: 8
+                        }
+
+                        Text {
+                            text: ""
+                        }
+                    }
+                                }
+            }
+
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 3
+                title: "Controller"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            text: "dash_esc"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        ComboBox {
+                            id: escMode
+                            Layout.fillWidth: true
+                            model: ["Auto detect", "Assume present", "Assume absent"]
+                            onActivated: if (!loading) setSetting("esc-mode", currentIndex)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            text: "CAN id (0 = auto)"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: escId
+                            from: 0
+                            to: 253
+                            editable: true
+                            onValueModified: if (!loading) setSetting("esc-id", value)
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "Without dash_esc: speed, duty, voltage, current and " +
+                              "temperatures work, and a VESC BMS still gives charge " +
+                              "and the cell page. Watt hours, amp hours, odometer, " +
+                              "range, efficiency, fault names, pitch, cruise, " +
+                              "signals, high beam and kickstand do not. Modes are " +
+                              "sent as a temporary profile, cleared by a power cycle."
+                        font.pointSize: 8
+                    }
+                                }
+            }
+
+
+
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 1
+                title: "Display"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+
+                        Text {
+                            text: "Smoothing"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: smoothBox
+                            from: 0
+                            to: 9
+                            stepSize: 1
+                            property real realValue: value / 10.0
+                            textFromValue: function(v) {
+                                return v === 0 ? "Off" : (v / 10.0).toFixed(1)
+                            }
+                            valueFromText: function(t) {
+                                return t === "Off" ? 0 : Math.round(parseFloat(t) * 10)
+                            }
+                            onValueModified: {
+                                if (!loading) setSetting("smooth", value / 10.0)
+                            }
+                        }
+
+                        Text {
+                            text: "Theme"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: themeBox
+                        Layout.fillWidth: true
+                        model: themeNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("theme", currentIndex)
+                            }
+                        }
+                    }
+
+                        Text {
+                            text: "Background"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: bgBox
+                        Layout.fillWidth: true
+                        model: colorNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("col-bg", colorValues[currentIndex])
+                            }
+                        }
+                    }
+
+                        Text {
+                            text: "Dial and accent"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: accentBox
+                        Layout.fillWidth: true
+                        model: colorNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("col-accent", colorValues[currentIndex])
+                            }
+                        }
+                    }
+
+                        Text {
+                            text: "Text"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                    ComboBox {
+                        id: textBox
+                        Layout.fillWidth: true
+                        model: colorNames
+                        onActivated: {
+                            if (!loading) {
+                                setSetting("col-text", colorValues[currentIndex])
+                            }
+                        }
+                    }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "A theme sets the background, accent, text and the " +
+                              "three status colours together. The three pickers " +
+                              "override it; leave them on Theme to follow it. " +
+                              "Every palette is built against the background, so " +
+                              "text and icons stay antialiased on a pale one."
+                        font.pointSize: 8
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 1
+                title: "PIN Lock"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "With a code set, the display starts on a keypad and " +
+                              "asks the controller to stay in neutral until the code " +
+                              "is entered. dash_esc 2.7 or newer holds that itself, so " +
+                              "unplugging the display does not unlock the bike -- and " +
+                              "a forgotten code then needs VESC Tool over USB to " +
+                              "clear. This is a deterrent, not security: the code is " +
+                              "stored as a plain number that anything on the CAN bus " +
+                              "can read."
+                        font.pointSize: 8
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            text: "Code"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: pinCode
+                            from: 0
+                            to: 9999
+                            editable: true
+                            onValueModified: if (!loading) setSetting("pin-code", value)
+                        }
+
+                        CheckBox {
+                            id: pinEnable
+                            text: "Require it"
+                            onClicked: if (!loading) setSetting("pin-en", checked ? 1 : 0)
+                        }
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 0
+                title: "Chart Page"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "A rolling window of one reading, autoscaled to " +
+                              "what is in it. On the display, hold a cell on the " +
+                              "live page to chart that cell instead."
+                        font.pointSize: 8
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+
+                        Text {
+                            text: "Source"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        ComboBox {
+                            id: chartSrcBox
+                            Layout.fillWidth: true
+                            model: slotNames
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("chart-src", currentIndex)
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "Window"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        ComboBox {
+                            id: chartSecsBox
+                            Layout.fillWidth: true
+                            model: ["5 s", "10 s"]
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("chart-secs", currentIndex === 0 ? 5 : 10)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 0
+                title: "Live Page"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: Utility.getAppHexColor("lightText")
+                        text: "Four readings, two by two. Every colour rule but " +
+                              "Fixed works off where the value sits in the range " +
+                              "below it, so the range has to be set for the " +
+                              "colour to mean anything. Low is bad reads the " +
+                              "ramp the other way, for a state of charge; Green " +
+                              "when negative marks regen on power or current."
+                        font.pointSize: 8
+                    }
+
+                    Repeater {
+                        id: slotRepeater
+                        model: 4
+
+                        ColumnLayout {
+                            property int slotIndex: index
+                            property alias source: slotBox.currentIndex
+                            property alias slotColor: slotColBox.currentIndex
+                            property alias ramp: rampBox.currentIndex
+                            property alias rangeLo: loBox.value
+                            property alias rangeHi: hiBox.value
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: 6
+
+                            Text {
+                                text: (slotIndex < 2 ? "Top " : "Bottom ") +
+                                      (slotIndex % 2 === 0 ? "left" : "right")
+                                color: Utility.getAppHexColor("lightText")
+                                font.weight: Font.Black
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                ComboBox {
+                                    id: slotBox
+                                    Layout.fillWidth: true
+                                    model: slotNames
+                                    onActivated: {
+                                        if (!loading) {
+                                            setSetting("slot-" + slotIndex,
+                                                       currentIndex)
+                                        }
+                                    }
+                                }
+
+                                ComboBox {
+                                    id: slotColBox
+                                    Layout.preferredWidth: 110
+                                    model: colorNames
+                                    onActivated: {
+                                        if (!loading) {
+                                            setSetting("slot-col-" + slotIndex,
+                                                       colorValues[currentIndex])
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: "Colour"
+                                    color: Utility.getAppHexColor("lightText")
+                                }
+
+                                ComboBox {
+                                    id: rampBox
+                                    Layout.fillWidth: true
+                                    model: slotModeNames
+                                    onActivated: {
+                                        if (!loading) {
+                                            setSetting("slot-mode-" + slotIndex,
+                                                       currentIndex)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // The range gets its own row: sharing one with the
+                            // checkbox leaves the spin boxes too narrow to use
+                            // on the mobile UI.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 14
+                                visible: rampBox.checked
+
+                                Text {
+                                    Layout.preferredWidth: 34
+                                    text: "from"
+                                    color: Utility.getAppHexColor("lightText")
+                                }
+
+                                SpinBox {
+                                    id: loBox
+                                    Layout.fillWidth: true
+                                    from: -1000
+                                    to: 10000
+                                    stepSize: 5
+                                    editable: true
+                                    onValueModified: {
+                                        if (!loading) {
+                                            setSetting("slot-min-" + slotIndex,
+                                                       value.toFixed(1))
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    Layout.preferredWidth: 18
+                                    text: "to"
+                                    color: Utility.getAppHexColor("lightText")
+                                }
+
+                                SpinBox {
+                                    id: hiBox
+                                    Layout.fillWidth: true
+                                    from: -1000
+                                    to: 10000
+                                    value: 100
+                                    stepSize: 5
+                                    editable: true
+                                    onValueModified: {
+                                        if (!loading) {
+                                            setSetting("slot-max-" + slotIndex,
+                                                       value.toFixed(1))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            GroupBox {
+                Layout.fillWidth: true
+                visible: editing === 2
+                title: "Pages"
+
+                ColumnLayout {
+                    anchors.fill: parent
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 4
+
+                        Repeater {
+                            id: pageRepeater
+                            model: pageNames
+
+                            CheckBox {
+                                text: modelData
+                                onClicked: if (!loading) setPageMask()
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            text: "Drive modes"
+                            color: Utility.getAppHexColor("lightText")
+                        }
+
+                        SpinBox {
+                            id: driveModes
+                            from: 1
+                            to: 5
+                            onValueModified: if (!loading) setSetting("drive-modes", value)
+                        }
+                    }
+                                }
+            }
+
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                visible: editing === 2
+                color: Utility.getAppHexColor("lightText")
+                font.weight: Font.Black
+                text: "On-Display Settings Page"
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 14
+                Layout.bottomMargin: 6
+                visible: editing === 2
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Utility.getAppHexColor("lightText")
+                    text: "Only the first six ticked are drawn."
+                    font.pointSize: 8
+                }
+
+                Repeater {
+                    id: rowRepeater
+                    model: rowNames
+
+                    CheckBox {
+                        property int rowIndex: index
+                        text: modelData
+                        checked: index < 4
+                        onClicked: if (!loading) setMaskBit(rowIndex, checked)
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                visible: editing === 1
+                color: Utility.getAppHexColor("lightText")
+                font.weight: Font.Black
+                text: "Status Icons"
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 14
+                Layout.bottomMargin: 6
+                visible: editing === 1
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Utility.getAppHexColor("lightText")
+                    text: "Unticked icons are not drawn at all."
+                    font.pointSize: 8
+                }
+
+                CheckBox {
+                    id: battRampBox
+                    text: "Colour the battery bar by charge"
+                    onClicked: {
+                        if (!loading) {
+                            setSetting("batt-ramp", checked ? 1 : 0)
+                        }
+                    }
+                }
+
+                CheckBox {
+                    id: splashBox
+                    text: "Show the boot splash"
+                    checked: true
+                    onClicked: {
+                        if (!loading) {
+                            setSetting("splash-en", checked ? 1 : 0)
+                        }
+                    }
+                }
+
+                Repeater {
+                    id: iconRepeater
+                    model: iconNames
+
+                    CheckBox {
+                        property int iconIndex: index
+                        text: modelData
+                        checked: true
+                        onClicked: if (!loading) setIconBit(iconIndex, checked)
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                visible: editing === 4
+                color: Utility.getAppHexColor("lightText")
+                font.weight: Font.Black
+                text: "Touch Regions"
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 14
+                Layout.bottomMargin: 6
+                visible: editing === 4
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Utility.getAppHexColor("lightText")
+                    text: "There are no physical buttons, so screen regions stand " +
+                          "in for them. Above the nav strip, the left and right " +
+                          "halves page; the strip itself is split into three. " +
+                          "Short presses are overridden while the settings page " +
+                          "is open, so it can always be navigated."
+                    font.pointSize: 8
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Utility.getAppHexColor("lightText")
+                    text: "Swipe down on any page for the quick shade, which is " +
+                          "six buttons and the way to reach a control that has " +
+                          "no region left to bind. Swipe up to close it. " +
+                          "Hazard, the indicators, the high beam and the horn go " +
+                          "out as a request on the CAN bus and need a node that " +
+                          "owns the switch gear to act on them; nothing happens " +
+                          "without one."
+                    font.pointSize: 8
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 6
+                    columns: 2
+
+                    Repeater {
+                        id: shadeRepeater
+                        model: 6
+
+                        ComboBox {
+                            property int cellIndex: index
+                            Layout.fillWidth: true
+                            model: shadeNames
+                            onActivated: {
+                                if (!loading) {
+                                    setSetting("shade-" + cellIndex,
+                                               shadeCodes[currentIndex])
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Repeater {
+                    id: btnRepeater
+                    model: 4
+
+                    ColumnLayout {
+                        property int btnIndex: index
+                        property alias shortIndex: shortBox.currentIndex
+                        property alias longIndex: longBox.currentIndex
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 4
+
+                        Text {
+                            text: regionNames[btnIndex]
+                            color: Utility.getAppHexColor("lightText")
+                            font.weight: Font.Black
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Text {
+                                Layout.preferredWidth: 44
+                                text: "Short"
+                                color: Utility.getAppHexColor("lightText")
+                            }
+
+                            ComboBox {
+                                id: shortBox
+                                Layout.fillWidth: true
+                                model: actionNames
+                                onActivated: {
+                                    if (!loading) {
+                                        setSetting("btn" + btnIndex + "-short",
+                                                   actionCodes[currentIndex])
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Text {
+                                Layout.preferredWidth: 44
+                                text: "Long"
+                                color: Utility.getAppHexColor("lightText")
+                            }
+
+                            ComboBox {
+                                id: longBox
+                                Layout.fillWidth: true
+                                model: actionNames
+                                onActivated: {
+                                    if (!loading) {
+                                        setSetting("btn" + btnIndex + "-long",
+                                                   actionCodes[currentIndex])
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                Layout.preferredHeight: 2
+                color: Utility.getAppHexColor("lightText")
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Button {
+                    text: "Reset All"
+                    onClicked: {
+                        statusText.text = "Resetting..."
+                        send("reset")
+                    }
+                }
+
+                Button {
+                    text: "Read From Display"
+                    onClicked: {
+                        statusText.text = "Reading..."
+                        haveRead = false
+                        readPoll.running = true
+                    }
+                }
+
+                Text {
+                    id: statusText
+                    Layout.fillWidth: true
+                    color: Utility.getAppHexColor("lightText")
+                    wrapMode: Text.WordWrap
+                    text: "Waiting for display..."
+                }
+            }
+
+            RowLayout {
+                Text {
+                    id: escState
+                    Layout.fillWidth: true
+                    color: Utility.getAppHexColor("lightText")
+                    wrapMode: Text.WordWrap
+                    text: "Controller: unknown"
+                }
+            }
+
+            RowLayout {
+                Text {
+                    text: "Package Version:"
+                    color: Utility.getAppHexColor("lightText")
+                }
+
+                Text {
+                    text: "{{VERSION}}"
+                    color: Utility.getAppHexColor("lightText")
+                    font.weight: Font.Black
+                }
+            }
+        }
+    }
+
+}

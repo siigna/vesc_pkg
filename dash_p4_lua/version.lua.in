@@ -1,0 +1,3 @@
+-- Shown on the splash. Generated from `version` by the Makefile, so the
+-- number lives in one place.
+return "{{VERSION}}"
