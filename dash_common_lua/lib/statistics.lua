@@ -3,6 +3,8 @@
 -- Ported from dash_common/lib/statistics.lisp. The state itself lives in
 -- lib/state.lua; this module holds the arithmetic over it.
 
+local state = require("lib.state")
+
 local M = {}
 
 --- smoothing ---
@@ -37,6 +39,154 @@ function M.smooth_step(sv, v, k, lo, hi)
 		return v
 	end
 
+	return n
+end
+
+--- live page sources ---
+--
+-- (label, unit) by index. Stored by index in the settings, so only append.
+M.slot_catalog = {
+	{"Speed", ""}, {"Battery", "%"}, {"Motor Amps", "A"}, {"Batt Amps", "A"},
+	{"Power", "kW"}, {"Voltage", "V"}, {"Motor Temp", ""}, {"ESC Temp", ""},
+	{"Pack Temp", ""}, {"Duty", "%"}, {"Trip", ""}, {"Odometer", ""},
+	{"Energy", "Wh"}, {"Regen", "Wh"}, {"Amp Hours", "Ah"}, {"Peak Amps", "A"},
+	{"Top Speed", ""}, {"Pitch", "deg"}, {"Min Pack", "V"}, {"Avg Speed", ""},
+	{"Moving", ""}, {"Elapsed", ""}, {"SOC Volts", "%"}, {"SOC Count", "%"},
+	{"SOC Model", "%"}, {"Cadence", "rpm"}, {"Crank Trq", "Nm"},
+	{"Rider", "W"}, {"Assist", "W"}, {"Assist x", ""},
+}
+
+function M.now()
+	return vesc.systime()
+end
+
+-- Both timers accumulate only when their interval closes, so a live reader
+-- has to add the interval still in progress or the number sits still while
+-- you ride.
+function M.moving_secs()
+	local extra = state.active_timestamp
+		and (M.now() - state.active_timestamp) or 0
+	return (state.active_timer + extra) / 1000.0
+end
+
+function M.elapsed_secs()
+	local extra = state.elapsed_timestamp
+		and (M.now() - state.elapsed_timestamp) or 0
+	return (state.elapsed_timer + extra) / 1000.0
+end
+
+-- Over moving time, not elapsed: an average that counts time at the lights
+-- tells you about the lights.
+function M.avg_kmh()
+	local t = M.moving_secs()
+	if t > 1.0 then
+		return state.km / (t / 3600.0)
+	end
+	return 0.0
+end
+
+-- What each slot index reads. The index is stored in the settings, so the
+-- order is fixed: only append.
+function M.slot_value(i)
+	local units = require("lib.units")
+	local battery = require("lib.battery")
+
+	if i == 0 then return units.speed(state.kmh) end
+	if i == 1 then return 100.0 * state.battery_soc end
+	if i == 2 then return state.amps_now end
+	if i == 3 then
+		-- Battery amps from power and pack voltage, guarded because a pack
+		-- voltage of zero is what an unseen controller reads as.
+		if state.vin == 0 then return 0.0 end
+		return state.kw * 1000.0 / state.vin
+	end
+	if i == 4 then return state.kw end
+	if i == 5 then return state.vin end
+	if i == 6 then return units.temp(state.temp_motor) end
+	if i == 7 then return units.temp(state.temp_esc) end
+	if i == 8 then return units.temp(state.temp_battery) end
+	if i == 9 then return state.duty * 100.0 end
+	if i == 10 then return units.dist(state.km) end
+	if i == 11 then return units.dist(state.odom) end
+	if i == 12 then return state.wh end
+	if i == 13 then return state.wh_chg end
+	if i == 14 then return state.battery_ah end
+	if i == 15 then return state.amps_max end
+	if i == 16 then return units.speed(state.kmh_max) end
+	if i == 17 then return state.angle_pitch end
+	if i == 18 then return state.vin_min or 0.0 end
+	if i == 19 then return units.speed(M.avg_kmh()) end
+	if i == 20 then return M.moving_secs() end
+	if i == 21 then return M.elapsed_secs() end
+	-- The three state-of-charge estimates, so they can be compared before
+	-- config.soc_source is pointed at one of them.
+	if i == 22 then return 100.0 * battery.voltage_soc(state.vin) end
+	if i == 23 then return 100.0 * battery.coulomb_soc(state.battery_ah) end
+	if i == 24 then return 100.0 * battery.model_soc() end
+	if i == 25 then return state.pas_cadence end
+	if i == 26 then return state.pas_torque end
+	if i == 27 then return state.pas_rider_w end
+	if i == 28 then return state.pas_assist_w end
+	-- How many times the rider's own effort the motor is adding. Guarded
+	-- because rider power is near zero whenever the cranks are barely
+	-- turning, which would otherwise divide to something meaningless.
+	if i == 29 then
+		if state.pas_rider_w > 5 then
+			return state.pas_assist_w / state.pas_rider_w
+		end
+		return 0.0
+	end
+	return 0.0
+end
+
+-- Units that follow the unit setting rather than being fixed.
+function M.slot_unit(i)
+	local units = require("lib.units")
+	if i == 0 or i == 16 or i == 19 then return units.speed_str() end
+	if i == 6 or i == 7 or i == 8 then return units.temp_str() end
+	if i == 10 or i == 11 then return units.dist_str() end
+	return M.slot_catalog[i + 1][2]
+end
+
+function M.slot_label(i)
+	return M.slot_catalog[i + 1][1]
+end
+
+-- One decimal for the small numbers, none for the ones that get large.
+local SLOT_FMT_0 = {[1]=true, [5]=true, [9]=true, [12]=true, [13]=true,
+	[15]=true, [2]=true, [3]=true, [6]=true, [7]=true, [8]=true,
+	[22]=true, [23]=true, [24]=true}
+
+function M.slot_fmt(i)
+	return SLOT_FMT_0[i] and "%.0f" or "%.1f"
+end
+
+-- The two timers are drawn as h:mm:ss rather than a number of seconds.
+function M.slot_is_time(i)
+	return i == 20 or i == 21
+end
+
+-- Smoothed value per live cell, nil until the cell has been drawn once.
+M.slot_smooth = {nil, nil, nil, nil}
+
+function M.slot_smooth_reset()
+	M.slot_smooth = {nil, nil, nil, nil}
+end
+
+-- What cell i should display: the real value with smoothing off, the glided
+-- one with it on. Both the number and its colour go through here, so a rule
+-- cannot disagree with the number it is colouring.
+--
+-- settings is passed in rather than read from a global so this can be
+-- rendered without the settings layer.
+function M.slot_shown(i, slots, smooth, mins, maxs)
+	local v = M.slot_value(slots[i + 1])
+	if smooth <= 0.0 then
+		return v
+	end
+	local n = M.smooth_step(M.slot_smooth[i + 1], v, smooth,
+		mins[i + 1], maxs[i + 1])
+	M.slot_smooth[i + 1] = n
 	return n
 end
 

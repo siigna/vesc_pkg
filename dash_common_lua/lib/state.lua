@@ -91,6 +91,18 @@ return {
 	pas_assist_w = 0,
 	pas_rx = false,
 
+	-- The two timers accumulate only when their interval closes, so a live
+	-- reader adds the interval still in progress. nil timestamp means no
+	-- interval is open.
+	active_timer = 0,
+	active_timestamp = nil,
+	elapsed_timer = 0,
+	elapsed_timestamp = nil,
+
+	-- nil until a pack voltage has been seen, which is what separates "no
+	-- minimum yet" from a minimum of zero.
+	vin_min = nil,
+
 	-- Maxima since the last session reset. Held separately from the live
 	-- values because a reset clears these and not those.
 	kmh_max = 0.0,

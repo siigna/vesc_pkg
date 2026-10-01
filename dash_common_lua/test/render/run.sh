@@ -63,6 +63,7 @@ PY
     python3 "$VE/tools/luapack.py" \
         --import-root .. --import-root ../.. \
         --asset font120="$FONTS/roboto-bold-120-4c.bin" \
+        --asset font40="$FONTS/roboto-bold-40-4c.bin" \
         --asset font24="$FONTS/roboto-bold-24-4c.bin" \
         --asset font18="$FONTS/roboto-bold-18-4c.bin" \
         -o "/tmp/${name}_p4.luapkg" "$script" >/dev/null || return 1
@@ -98,5 +99,17 @@ run_case batt '(view-static-step)
 (page-batt true)
 (page-batt false)
 (view-static-step)' batt_p4.lua || fail=1
+
+run_case live '(view-static-step)
+(setq page-now 0)
+(page-live true)
+(page-live false)
+(view-static-step)' live_p4.lua || fail=1
+
+run_case pas '(view-static-step)
+(setq page-now 4)
+(page-pas true)
+(page-pas false)
+(view-static-step)' pas_p4.lua || fail=1
 
 exit $fail
