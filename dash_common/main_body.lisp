@@ -380,6 +380,15 @@
         (board-disp-init)
         (disp-clear color-bg)
 
+        ; Turn the backlight on. The board profile parks it off at boot so
+        ; nothing shows before the first draw, and the only other caller of
+        ; bl-set is settings-apply-visual, which the worker runs on a theme
+        ; change and never at startup. Without this a board with real
+        ; backlight control renders everything into a dark panel, and the
+        ; symptom is intermittent rather than constant: a pwm-start left by
+        ; whatever ran before survives until the next reset.
+        (trap (bl-set (if backlight-dim settings-bl-dim settings-bl-bright)))
+
         ; Touch is optional: paging is the only thing it drives, so a dead
         ; controller costs the page buttons and nothing else.
         (match (trap (board-touch-init))
