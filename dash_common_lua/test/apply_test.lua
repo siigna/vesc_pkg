@@ -236,6 +236,42 @@ table.sort(unwritten)
 t.ok("restore writes every address in the map: " ..
 	table.concat(unwritten, " "), #unwritten == 0)
 
+--- a factory reset with a float backlight level ---
+--
+-- Found on hardware, by calling settings_reset over the REPL: the board's dim
+-- level is 0.25 on a panel whose backlight is real PWM, and restore writes
+-- both levels into integer cells. eeprom_store_i goes through
+-- luaL_checkinteger, which refuses a float with no integer representation
+-- rather than truncating, so a factory reset raised.
+--
+-- It passed here at the time because the stub floored silently. It does not
+-- any more, which is what makes this a test rather than a comment.
+wipe()
+local pwm_cfg = {}
+for k, v in pairs(cfg) do pwm_cfg[k] = v end
+pwm_cfg.bl_bright = 1.0
+pwm_cfg.bl_dim = 0.25
+
+local ok_reset, err_reset = pcall(apply.restore, pwm_cfg)
+t.ok("a restore with a float dim level does not raise: " .. tostring(err_reset),
+	ok_reset)
+
+-- And the value that lands is the truncation, which is a dark panel. That is
+-- the lisp's behaviour too -- its load clamps bl-dim to 0..1 and 0 is in
+-- range -- so it is asserted rather than quietly fixed. Fixing it properly
+-- means float cells for the two levels, which means new addresses.
+t.ok("the dim level truncates to zero", settings.read("bl_dim") == 0)
+
+settings.load(pwm_cfg)
+t.near("and loads as zero rather than the board default",
+	settings.values.bl_dim, 0.0)
+
+-- An integer-valued float is fine, which is the bright level's case.
+wipe()
+t.ok("an integer-valued float is accepted",
+	settings.write("bl_bright", 1.0) ~= false)
+t.ok("and reads back as the integer", settings.read("bl_bright") == 1)
+
 --- the stale version check ---
 wipe()
 t.ok("an empty eeprom is stale", apply.restore_if_stale(cfg))

@@ -154,6 +154,24 @@ function M.write(name, val)
 	if ty == "b" then
 		return vesc.eeprom_store_i(addr, val and 1 or 0)
 	end
+
+	-- Truncated, because the binding refuses a float with no integer
+	-- representation outright: eeprom_store_i goes through luaL_checkinteger,
+	-- and 0.25 is "number has no integer representation", not 0.
+	--
+	-- That is not hypothetical. restore writes the board's backlight levels
+	-- into integer cells, and on a board whose backlight is real PWM the dim
+	-- level is 0.25, so a factory reset raised on hardware. It did not on the
+	-- host, because the test stub floored silently -- the second time a stub
+	-- more permissive than the firmware hid a real failure.
+	--
+	-- A dim level that truncates to 0 is a dark panel, which is the lisp's
+	-- behaviour here too: its load clamps bl-dim to 0..1 and 0 is in range.
+	-- Fixing that properly means a float cell for the two levels, which means
+	-- new addresses, so it is recorded rather than done.
+	if math.type(val) == "float" then
+		val = math.floor(val)
+	end
 	return vesc.eeprom_store_i(addr, val)
 end
 

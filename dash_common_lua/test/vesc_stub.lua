@@ -85,7 +85,19 @@ function vesc.eeprom_read_f(addr)
 	return vesc.eeprom[addr]
 end
 
+-- As strict as the binding: eeprom_store_i goes through luaL_checkinteger,
+-- which refuses a float with no integer representation rather than
+-- truncating it. This stub used to floor, and that difference hid a real
+-- failure -- a factory reset writing a 0.25 backlight level raised on
+-- hardware and passed here.
+--
+-- A stub more permissive than the firmware is worse than no stub: it turns a
+-- test suite into evidence that the wrong thing works.
 function vesc.eeprom_store_i(addr, v)
+	if math.type(v) == "float" and v ~= math.floor(v) then
+		error(string.format(
+			"eeprom_store_i: %s has no integer representation", tostring(v)), 2)
+	end
 	vesc.eeprom[addr] = math.floor(v)
 	return true
 end
