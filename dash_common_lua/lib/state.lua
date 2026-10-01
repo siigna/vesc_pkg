@@ -60,4 +60,41 @@ return {
 
 	-- Logging, as the controller reports it.
 	log_active = false,
+
+	-- From the controller's status frames. Scaled out of the fixed-point
+	-- integers the protocol carries, so these are real units.
+	duty = 0.0,
+	kmh = 0.0,
+	kw = 0.0,
+	updated = false,
+	temp_battery = 0.0,
+	temp_esc = 0.0,
+	temp_motor = 0.0,
+	angle_pitch = 0.0,
+	wh = 0.0,
+	wh_chg = 0.0,
+	km = 0.0,
+	odom = 0.0,
+	fault_code = 0,
+	amps_avg = 0,
+	amps_max = 0,
+	amps_now = 0,
+	conf_dirty = false,
+	esc_pin_holding = false,
+
+	-- Pedal assist, reported by a controller that has it.
+	pas_flags = 0,
+	pas_output = 0.0,
+	pas_cadence = 0.0,
+	pas_torque = 0.0,
+	pas_rider_w = 0,
+	pas_assist_w = 0,
+	pas_rx = false,
+
+	-- Controller settings, one per frame, filled in as they arrive. seen is
+	-- what separates a setting reported as zero from one not yet reported.
+	conf_count = 0,
+	conf_vals = {},
+	conf_gated = {},
+	conf_seen = {},
 }
