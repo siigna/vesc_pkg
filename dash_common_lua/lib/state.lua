@@ -51,6 +51,12 @@ return {
 	view_force_static = false,
 	view_force_pages = false,
 
+	-- A theme change moves every palette, and those are baked into the
+	-- indexed buffers already on screen. Set by whatever changed it and
+	-- consumed by the worker pass, not by the press: rebuilding every palette
+	-- on each step of a held spinner would make the settings page unusable.
+	settings_redraw = false,
+
 	-- rx flags separate "not reported" from a real zero, which matters for
 	-- an ambient temperature and for a clock.
 	temp_ambient = 0.0,
