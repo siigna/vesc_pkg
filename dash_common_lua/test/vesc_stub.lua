@@ -95,9 +95,15 @@ function vesc.eeprom_store_f(addr, v)
 	return true
 end
 
--- A monotonic clock in seconds, so modules that take systime work unchanged.
+-- The clock. systime is FreeRTOS ticks, which is milliseconds on every board
+-- in the tree -- CONFIG_FREERTOS_HZ is 1000 in all ten sdkconfig.defaults --
+-- and the timer arithmetic in statistics divides by 1000.0 on that basis. A
+-- stub returning seconds would make those timers read 1000x short, so this
+-- returns milliseconds as an integer the way the binding does.
+--
+-- secs_since is seconds, as its name and its binding both say.
 local t0 = os.clock()
-function vesc.systime() return os.clock() - t0 end
-function vesc.secs_since(t) return (os.clock() - t0) - t end
+function vesc.systime() return math.floor((os.clock() - t0) * 1000.0) end
+function vesc.secs_since(t) return (os.clock() - t0) - t / 1000.0 end
 
 return vesc

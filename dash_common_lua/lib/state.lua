@@ -113,6 +113,17 @@ return {
 	temp_battery_max = 0.0,
 	session_start = 0,
 
+	-- The most regen seen, as the lowest motor current. Tracked by the lisp
+	-- too, and no view reads it in either dash -- it is session data that
+	-- costs one comparison a tick to keep, and throwing it away is the one
+	-- thing that cannot be undone later.
+	amps_now_min = 0.0,
+
+	-- Every distinct fault code seen this session, in the order they first
+	-- appeared. The live fault_code only says what is wrong now, which on an
+	-- intermittent fault is nothing by the time the rider looks.
+	fault_codes_observed = {},
+
 	-- Controller settings, one per frame, filled in as they arrive. seen is
 	-- what separates a setting reported as zero from one not yet reported.
 	conf_count = 0,

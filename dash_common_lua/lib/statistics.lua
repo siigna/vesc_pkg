@@ -63,6 +63,11 @@ end
 -- Both timers accumulate only when their interval closes, so a live reader
 -- has to add the interval still in progress or the number sits still while
 -- you ride.
+--
+-- The timers are kept in systime units and divided here, which is correct
+-- only because systime is FreeRTOS ticks and CONFIG_FREERTOS_HZ is 1000 on
+-- every board in the tree. The lisp makes the same assumption; it is written
+-- down here because nothing enforces it.
 function M.moving_secs()
 	local extra = state.active_timestamp
 		and (M.now() - state.active_timestamp) or 0
@@ -251,6 +256,126 @@ end
 function M.chart_reset()
 	M.chart_head = 0
 	M.chart_count = 0
+end
+
+--- the sampler ---
+--
+-- The lisp runs this as its own 20 Hz thread and pushes a chart sample every
+-- other tick, which is 10 Hz because that is the rate the controller sends
+-- at: sampling faster would only duplicate values and make the window
+-- shorter than the setting says.
+--
+-- The Lua engine has one timer, so the base rate here is the input layer's
+-- 50 Hz and chart_div is what brings the chart back to 10 Hz. The divisor is
+-- the thing to change if the base rate moves; the comment above chart_max
+-- about ten seconds depends on it.
+M.chart_div = 5
+
+-- A reset is a request rather than an action, applied at the top of the next
+-- tick. The lisp needs that because the action fires on a different thread
+-- from the one owning these values; here it buys something smaller but real,
+-- which is that a reset cannot land between the maxima and the timers and
+-- clear half a session.
+M.reset_now = false
+
+function M.reset_max()
+	M.reset_now = true
+end
+
+local function apply_reset()
+	state.kmh_max = 0.0
+	state.kw_max = 0.0
+	state.temp_battery_max = 0.0
+	state.temp_esc_max = 0.0
+	state.temp_motor_max = 0.0
+	state.amps_now_max = 0.0
+	state.amps_now_min = 0.0
+	state.vin_min = nil
+	state.active_timer = 0
+	state.active_timestamp = nil
+	state.elapsed_timer = 0
+	state.elapsed_timestamp = nil
+	M.reset_now = false
+end
+
+-- One pass: fold the live values into the session maxima, then advance the
+-- timers.
+--
+-- chart_src is the slot index the chart is set to, from the settings. Passed
+-- in rather than read, because this module is below the settings and the
+-- render tests drive it without them.
+--
+-- Idempotent except for the chart push and the timers, which is what lets it
+-- run at the input rate rather than needing its own.
+function M.tick(chart_src)
+	if M.reset_now then
+		apply_reset()
+	end
+
+	M.chart_tick = M.chart_tick + 1
+	if M.chart_tick % M.chart_div == 0 then
+		M.chart_push(M.slot_value(chart_src))
+	end
+
+	if state.kmh > state.kmh_max then state.kmh_max = state.kmh end
+	if state.kw > state.kw_max then state.kw_max = state.kw end
+	if state.temp_battery > state.temp_battery_max then
+		state.temp_battery_max = state.temp_battery
+	end
+	if state.temp_esc > state.temp_esc_max then
+		state.temp_esc_max = state.temp_esc
+	end
+	if state.temp_motor > state.temp_motor_max then
+		state.temp_motor_max = state.temp_motor
+	end
+
+	-- Motor current both ways: the maximum is how hard it was driven, the
+	-- minimum how hard it was braked.
+	if state.amps_now > state.amps_now_max then
+		state.amps_now_max = state.amps_now
+	end
+	if state.amps_now < state.amps_now_min then
+		state.amps_now_min = state.amps_now
+	end
+
+	-- Fault codes, first appearance kept. Zero is "no fault", not a code.
+	if state.fault_code > 0 then
+		local seen = false
+		for _, c in ipairs(state.fault_codes_observed) do
+			if c == state.fault_code then
+				seen = true
+				break
+			end
+		end
+		if not seen then
+			state.fault_codes_observed[#state.fault_codes_observed + 1] =
+				state.fault_code
+		end
+	end
+
+	-- Lowest pack voltage. Zero is ignored: it is what the field reads
+	-- before the first frame arrives, and a minimum of zero would stick
+	-- for the rest of the session.
+	if state.vin > 0.0 then
+		if not state.vin_min or state.vin < state.vin_min then
+			state.vin_min = state.vin
+		end
+	end
+
+	-- Elapsed runs from the first tick onward, moving or not.
+	if not state.elapsed_timestamp then
+		state.elapsed_timestamp = M.now()
+	end
+
+	-- Moving accumulates only while there is speed, and only when the
+	-- interval closes -- which is why moving_secs adds the open one.
+	if state.kmh > 0.0 and not state.active_timestamp then
+		state.active_timestamp = M.now()
+	elseif state.kmh == 0.0 and state.active_timestamp then
+		state.active_timer =
+			state.active_timer + (M.now() - state.active_timestamp)
+		state.active_timestamp = nil
+	end
 end
 
 return M
