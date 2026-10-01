@@ -33,6 +33,15 @@ function M.set_layout(L)
 	-- start a fixed gap later, so the two never run together.
 	M.col_lbl_w = M.col_w * 5 // 8
 	M.col_val_w = M.col_w - M.col_lbl_w - M.col_gap
+
+	-- The live cell grid, and the quick shade's. Built here rather than
+	-- lazily inside the page that draws them, because the action layer hit
+	-- tests against both and a long press can land before either page has
+	-- been drawn once.
+	local geom = require("lib.geom")
+	M.live_geom = geom.live(L.page_x, L.page_y, L.page_w, L.page_h,
+		L.page_cols)
+	M.shade_geom = geom.shade(L.disp_w, L.nav_y)
 end
 
 -- Round to a multiple of x, e.g. round_x(1.23, 0.1) -> 1.2
@@ -530,8 +539,6 @@ function M.page_live(switched)
 	local geom = require("lib.geom")
 	local L = M.L
 
-	M.live_geom = M.live_geom or geom.live(L.page_x, L.page_y, L.page_w,
-		L.page_h, L.page_cols)
 	local g = M.live_geom
 
 	-- Entering the page snaps rather than gliding up from whatever was shown
@@ -1062,7 +1069,7 @@ end
 function M.page_shade(switched)
 	local geom = require("lib.geom")
 	local L = M.L
-	local g = geom.shade(L.disp_w, L.nav_y)
+	local g = M.shade_geom
 	local curr = M.shade_state_list()
 
 	if switched then
