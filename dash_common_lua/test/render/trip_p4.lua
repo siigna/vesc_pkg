@@ -1,14 +1,6 @@
--- Renders the ported view_static for the P4 profile, pinned to exactly the
--- state the lisp reference pins, so the two can be compared pixel for pixel.
--- See run.sh.
---
--- Everything pinned here is pinned because it would otherwise come from a
--- clock, from eeprom, or from a module the reference loads and this does not.
--- Three of them were wrong at first and each cost a round trip: the reporting
--- clock, the number of pages, and how many steps the reference takes.
--- The Lua half of the view_static comparison. Pinned to exactly the state the
--- lisp reference pins, including blink_on, because a render that depends on a
--- clock is not a reference.
+-- Renders the ported trip page for the P4 profile against its lisp
+-- reference. Same pinning as static_p4.lua, plus the values only this page
+-- reads. See run.sh.
 local state = require("lib.state")
 local colors = require("lib.colors")
 local units = require("lib.units")
@@ -74,8 +66,28 @@ vs.blink_on = function() return true end
 signals.rx_last = 0
 signals.secs_since = function() return 0.0 end
 
+local vp = require("lib.view_pages")
+vp.font_24 = vs.font_24
+vp.font_16 = vs.font_16
+vp.set_layout(vs.layout)
+
+-- The ride values the reference pins that only the trip page reads.
+state.km = 18.4
+state.odom = 1243.0
+state.wh = 214.0
+state.wh_chg = 12.0
+state.battery_ah = 20.0
+
 vs.reset()
 vs.frame()
 vs.step()
 
-print("lua static rendered")
+-- Page 1 of the catalogue is the trip page. Switched then unswitched, as the
+-- page loop does, then the static layer settled again so the nav strip shows
+-- this page rather than the previous one.
+state.page_now = 1
+vp.page_trip(true)
+vp.page_trip(false)
+vs.step()
+
+print("lua trip rendered")

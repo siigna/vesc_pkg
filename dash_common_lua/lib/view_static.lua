@@ -61,6 +61,9 @@ function M.set_layout(cfg)
 		speed_h = cfg.speed_h,
 		page_h = cfg.page_h,
 		page_cols = cfg.page_cols,
+		-- view_pages reads this from the layout rather than the board, so
+		-- the two cannot disagree about row height.
+		page_row_h = cfg.page_row_h,
 		unit_h = 24,
 		mode_h = 30,
 		batt_h = 44,
