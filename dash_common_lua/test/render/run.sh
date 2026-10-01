@@ -106,6 +106,18 @@ run_case live '(view-static-step)
 (page-live false)
 (view-static-step)' live_p4.lua || fail=1
 
+run_case settings '(view-static-step)
+(setq page-now 8)
+(page-settings true)
+(page-settings false)
+(view-static-step)' settings_p4.lua || fail=1
+
+run_case conf '(view-static-step)
+(setq page-now 6)
+(page-conf true)
+(page-conf false)
+(view-static-step)' conf_p4.lua || fail=1
+
 run_case chart '(view-static-step)
 (setq page-now 5)
 (page-chart true)

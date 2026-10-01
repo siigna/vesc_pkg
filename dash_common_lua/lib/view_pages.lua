@@ -825,4 +825,145 @@ function M.page_chart(switched)
 	vesc.disp_render(txt, L.page_x, L.page_y + chart_h + 2, colors.text_aa)
 end
 
+-- --- Settings and controller settings pages ---
+--
+-- Both are a scrolling list of label and value with one row selected. The
+-- list is taller than the page, so which rows are on screen depends on the
+-- selection -- which means a selection move has to redraw the labels too,
+-- not only the values.
+
+M.rows_visible = nil
+M.settings_first_row_last = -1
+M.conf_first_row_last = -1
+
+-- The display settings list, injected by the settings layer: names, labels
+-- and formats as lib/settings.build returns them, plus which row is selected.
+M.setting_list = {}
+M.setting_labels = {}
+M.setting_fmts = {}
+M.setting_now = 0
+
+-- Which row is at the top, given the selection. Keeps the selection roughly
+-- centred without scrolling past either end.
+local function first_row(rows, now, visible)
+	if rows <= visible then
+		return 0
+	end
+	local half = visible // 2
+	if now < half then
+		return 0
+	end
+	if now >= rows - half then
+		return rows - visible
+	end
+	return now - half
+end
+
+function M.page_settings(switched)
+	local settings = require("lib.settings")
+	local L = M.L
+	local visible = L.page_h // M.row_h
+	local rows = #M.setting_list
+
+	local curr = {}
+	for i = 1, rows do
+		curr[i] = settings.read(M.setting_list[i])
+	end
+	curr[rows + 1] = M.setting_now
+
+	local update = changed(M.settings_last or {}, curr)
+	local first = first_row(rows, M.setting_now, visible)
+
+	if switched or first ~= M.settings_first_row_last then
+		update = all_true(#curr)
+		M.settings_first_row_last = first
+
+		M.resources = {
+			val_img = vesc.img_buffer("indexed4", L.page_w - 224, M.row_h),
+		}
+		M.page_clear()
+
+		local lbl = vesc.img_buffer("indexed4", 210, M.row_h)
+		for i = 0, math.min(visible, rows) - 1 do
+			M.txt_right(lbl, L.page_x + 4, L.page_y + i * M.row_h,
+				M.setting_labels[first + i + 1])
+		end
+	end
+
+	local val = M.resources.val_img
+	for i = 0, math.min(visible, rows) - 1 do
+		local r = first + i + 1
+		if update[r] or update[rows + 1] then
+			M.txt_left(val, L.page_x + 224, L.page_y + i * M.row_h,
+				string.format(M.setting_fmts[r], curr[r]),
+				(curr[rows + 1] == r - 1) and colors.text_sel_aa or colors.text_aa)
+		end
+	end
+
+	M.settings_last = curr
+end
+
+-- Same shape, but the values live on the controller: they are mirrored in
+-- over CAN and changed by sending a frame back, so a row reads "--" until the
+-- controller has reported it.
+function M.page_conf(switched)
+	local cc = require("lib.controller_conf")
+	local L = M.L
+	local visible = L.page_h // M.row_h
+	local rows = cc.menu_len()
+
+	local curr = {}
+	for i = 0, rows - 1 do
+		local v = cc.value(i)
+		curr[i + 1] = (v == nil) and "--" or string.format(cc.row(i)[3], v)
+	end
+	curr[rows + 1] = cc.now
+	curr[rows + 2] = state.conf_dirty
+	curr[rows + 3] = state.kill_sw_active
+
+	local update = changed(M.conf_last or {}, curr)
+	local first = first_row(rows, cc.now, visible)
+
+	-- The labels move when the list scrolls, and a gated row changes
+	-- appearance when the kill switch does, so both force a full redraw.
+	if switched or first ~= M.conf_first_row_last or update[rows + 3] then
+		update = all_true(#curr)
+		M.conf_first_row_last = first
+
+		M.resources = {
+			val_img = vesc.img_buffer("indexed4", L.page_w - 224, M.row_h),
+		}
+		M.page_clear()
+
+		local lbl = vesc.img_buffer("indexed4", 210, M.row_h)
+		for i = 0, math.min(visible, rows) - 1 do
+			local r = first + i
+			-- A gated row the kill switch is not holding is shown dim and
+			-- marked, so it is clear before pressing that the press would be
+			-- refused rather than after.
+			M.txt_right(lbl, L.page_x + 4, L.page_y + i * M.row_h,
+				cc.row(r)[2] .. (cc.blocked(r) and " *" or ""))
+		end
+	end
+
+	local val = M.resources.val_img
+	for i = 0, math.min(visible, rows) - 1 do
+		local r = first + i
+		if update[r + 1] or update[rows + 1] then
+			local pal
+			if cc.blocked(r) then
+				pal = colors.fade_aa(0.45)
+			elseif curr[rows + 1] == r then
+				pal = colors.text_sel_aa
+			else
+				pal = colors.text_aa
+			end
+			M.txt_left(val, L.page_x + 224, L.page_y + i * M.row_h,
+				curr[r + 1], pal)
+		end
+	end
+
+	M.conf_last = curr
+end
+
 return M
