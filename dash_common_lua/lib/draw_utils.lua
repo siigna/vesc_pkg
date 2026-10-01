@@ -35,15 +35,59 @@ end
 --
 -- colors defaults to the four-entry indexed palette the views use; py
 -- overrides the vertical placement.
-function M.ttf_txt_center(txt, font, imgbuf, colors, py)
-	local w_txt = vesc.ttf_text_dims(font, txt)
-	local _, h_glyph = vesc.ttf_glyph_dims(font, "D")
-	local w_img, h_img = vesc.img_dims(imgbuf)
+function M.ttf_txt_center(txt, font, imgbuf, colours, py)
+	local w_txt = font:measure(txt)
+	local _, h_glyph = font:glyph_dims("D")
+	local w_img, h_img = imgbuf:dims()
 
-	colors = colors or {0, 1, 2, 3}
-	py = py or (h_glyph + (h_img - h_glyph) / 2)
+	-- Vertically by the cap height of "D" rather than the font's ascent, so a
+	-- line of digits sits where the eye expects. py overrides it.
+	py = py or (h_glyph + (h_img - h_glyph) // 2)
 
-	vesc.ttf_text(imgbuf, (w_img - w_txt) / 2, py, colors, font, txt)
+	local base, aa = M.text_colour(colours)
+	imgbuf:text((w_img - w_txt) // 2, py, font, txt, base, aa)
+end
+
+-- Translate a lisp colour list into the base index and antialias flag the Lua
+-- draw call takes.
+--
+-- The lisp passes one palette entry per coverage level, so (0 1 2 3) is a
+-- ramp and (0 3 3 3) is a flat colour at the brightest entry -- which is how
+-- the battery percentage is drawn, because the fill behind it would otherwise
+-- make the ramp read as green on green.
+--
+-- Lua takes a base index plus a flag, which expresses exactly those two
+-- shapes: antialiased means coverage k lands on base+k-1, flat means every
+-- covered pixel is base. A list that skips or reorders entries has no
+-- equivalent and is refused rather than approximated, because approximating
+-- it would draw a colour nobody chose.
+--
+-- This is the cost of taking an index instead of the list. It is paid once,
+-- here, rather than at every call site.
+function M.text_colour(colours)
+	if not colours then
+		return 1, true
+	end
+
+	local c1, c2, c3 = colours[2], colours[3], colours[4]
+
+	-- Three entries is an indexed2 glyph: one coverage level, so flat.
+	if c2 == nil then
+		return c1 or 1, false
+	end
+
+	if c2 == c1 + 1 and c3 == c1 + 2 then
+		return c1, true
+	end
+
+	if c2 == c1 and c3 == c1 then
+		return c1, false
+	end
+
+	error(string.format(
+		"text colour list {%s,%s,%s,%s} is neither a ramp nor a flat colour, "
+		.. "which is all a base index can express",
+		tostring(colours[1]), tostring(c1), tostring(c2), tostring(c3)))
 end
 
 return M
