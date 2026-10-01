@@ -48,6 +48,23 @@ function M.ttf_txt_center(txt, font, imgbuf, colours, py)
 	imgbuf:text((w_img - w_txt) // 2, py, font, txt, base, aa)
 end
 
+-- Left-aligned at x, on a baseline derived from the font rather than guessed.
+--
+-- The y that img:text takes is the baseline, with the glyphs extending
+-- upward from it -- which is why ttf_txt_center adds the cap height of "D"
+-- rather than treating py as a top edge. Passing a row's top edge straight
+-- through puts the whole line above its buffer and it renders as nothing, or
+-- as the bottom two pixels of the tallest letters.
+--
+-- Returns the baseline used, so a caller laying out rows can step by it.
+function M.ttf_txt_left(txt, font, imgbuf, x, row_top, colours)
+	local _, h_glyph = font:glyph_dims("D")
+	local base, aa = M.text_colour(colours)
+	local py = row_top + h_glyph
+	imgbuf:text(x, py, font, txt, base, aa)
+	return py
+end
+
 -- Translate a lisp colour list into the base index and antialias flag the Lua
 -- draw call takes.
 --

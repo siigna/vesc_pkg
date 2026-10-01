@@ -59,6 +59,23 @@ return {
 	light_on_default = false,
 	light_on_is_highbeam = false,
 
+	-- How long to hold the boot log on screen after the splash, in seconds.
+	-- Zero is off. On a board being brought up this is worth having: the
+	-- thing it reports on is bring-up, and a display that came up wrong is
+	-- the one whose stored settings cannot be trusted to let you reach a
+	-- page.
+	--
+	-- Long enough to read a screen of text and no longer. The bottom line is
+	-- a live touch probe while it is up, so a longer window is useful when
+	-- that is what is being tested -- but it delays the dash by exactly this
+	-- much every boot, so it is not the default for that.
+	boot_log_s = 4.0,
+
+	-- Log a per-job timing line once a second. Off for a dash being ridden;
+	-- on here because with one timer every job spends the same budget, so
+	-- "the dash uses N%" says nothing about which job to look at.
+	timing = true,
+
 	-- Prefer GNSS speed over the controller's estimate. Off: this board has
 	-- no GNSS of its own.
 	gnss_use_speed = false,

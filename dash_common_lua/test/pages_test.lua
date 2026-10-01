@@ -16,14 +16,17 @@ local pages = require("lib.pages")
 
 -- The pages are never drawn here; they are compared by identity, which is
 -- what the dash itself does to ask which page it is on.
-local ALL = 0xFF
+-- Every catalog page. Nine bits now the boot log is one of them; the bound
+-- in settings.load had to be raised to match, which is what lets a newly
+-- appended page be enabled at all.
+local ALL = 0x1FF
 
 --- the set ---
 pages.apply_mask(ALL)
 
-t.ok("eight catalog pages",       #pages.catalog == 8)
-t.ok("page_num is the rotation",  state.page_num == 8)
-t.ok("three appended after it",   #pages.pages == 11)
+t.ok("nine catalog pages",        #pages.catalog == 9)
+t.ok("page_num is the rotation",  state.page_num == 9)
+t.ok("three appended after it",   #pages.pages == 12)
 
 t.ok("the rotation starts at live", pages.at(0) == vp.page_live)
 t.ok("settings is at page_num",     pages.at(state.page_num) == vp.page_settings)
@@ -32,7 +35,7 @@ t.ok("the keypad is two past",      pages.at(state.page_num + 2) == vp.page_pin)
 t.ok("and nothing is three past",   pages.at(state.page_num + 3) == nil)
 
 t.ok("index_of finds a rotation page", pages.index_of(vp.page_chart) == 5)
-t.ok("and the appended ones too",      pages.index_of(vp.page_settings) == 8)
+t.ok("and the appended ones too",      pages.index_of(vp.page_settings) == 9)
 
 --- the mask ---
 --
@@ -67,9 +70,9 @@ t.ok("a bit past the catalog falls back", state.page_num == 1)
 -- page_now survives a mask change, and a narrower mask can leave it pointing
 -- past the new set, which would draw nothing at all.
 pages.apply_mask(ALL)
-state.page_now = 10                      -- the keypad, with eight pages
+state.page_now = 11                      -- the keypad, with nine pages
 pages.apply_mask(ALL)
-t.ok("a page_now inside the new set is kept", state.page_now == 10)
+t.ok("a page_now inside the new set is kept", state.page_now == 11)
 
 pages.apply_mask(1 << 0)                 -- one page: valid is 0..2
 t.ok("and reset when it falls outside", state.page_now == 0)
@@ -78,7 +81,7 @@ t.ok("and reset when it falls outside", state.page_now == 0)
 pages.apply_mask(ALL)
 state.page_now = state.page_num + 2
 pages.apply_mask(ALL)
-t.ok("the keypad index is not outside", state.page_now == 10)
+t.ok("the keypad index is not outside", state.page_now == 11)
 
 --- the overlays ---
 pages.apply_mask(ALL)
@@ -110,7 +113,7 @@ state.page_now = 0
 pages.next()
 t.ok("next steps forward", state.page_now == 1)
 
-for _ = 1, 7 do pages.next() end
+for _ = 1, state.page_num - 1 do pages.next() end
 t.ok("and wraps at page_num", state.page_now == 0)
 
 pages.prev()
@@ -131,7 +134,7 @@ for p in pairs(reached) do
 	if p >= state.page_num then escaped = true end
 end
 t.ok("paging never reaches the settings page or an overlay", not escaped)
-t.ok("and reaches every rotation page", #pages.catalog == 8 and (function()
+t.ok("and reaches every rotation page", #pages.catalog == 9 and (function()
 	for i = 0, state.page_num - 1 do
 		if not reached[i] then return false end
 	end

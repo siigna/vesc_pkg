@@ -1215,4 +1215,89 @@ function M.page_pin(switched)
 	M.pin_last = curr
 end
 
+
+-- --- the boot log ---------------------------------------------------------
+--
+-- The board's own log, on the glass. New: the lisp dash has no equivalent,
+-- because until now there was nothing to read -- commands_printf sends to
+-- whichever port last spoke to the board, so every line from bring-up went
+-- nowhere and finding out why a display came up wrong meant a serial cable.
+--
+-- The plainest page on the dash on purpose. Fixed rows, oldest at the top,
+-- newest at the bottom, the text drawn as it arrived. It reads like a Linux
+-- console because that is what it is, and a log that has been prettified is
+-- a log you cannot trust to be the log.
+--
+-- Left-aligned and clipped rather than scaled to fit: a proportional font
+-- makes a long path wider than the panel, and cutting the end off a line is
+-- better than shrinking every line to suit the worst one.
+M.log_rows = nil
+
+-- Redrawn whole whenever the text changes. There is no per-row dirty check
+-- because every row moves when one line is appended, which is the common
+-- case: the cheap thing here is comparing the joined text, not tracking rows.
+M.log_last = ""
+
+function M.log_geom()
+	local L = M.L
+	local _, cap = M.font_16:glyph_dims("D")
+	local line_h = cap + 6
+	local top = L.page_y
+	return {
+		line_h = line_h,
+		top = top,
+		rows = (L.page_h) // line_h,
+		x = 8,
+	}
+end
+
+function M.page_log(switched)
+	local boot_log = require("lib.boot_log")
+	local L = M.L
+	local g = M.log_geom()
+
+	local lines = boot_log.lines()
+
+	-- The last rows that fit, because the end of a log is the part worth
+	-- having when it does not all fit.
+	local first = #lines - g.rows + 1
+	if first < 1 then
+		first = 1
+	end
+
+	local shown = {}
+	for i = first, #lines do
+		shown[#shown + 1] = lines[i]
+	end
+
+	local joined = table.concat(shown, "\n")
+
+	if switched then
+		M.resources = {
+			log_img = vesc.img_buffer("indexed2", L.page_w, g.rows * g.line_h),
+		}
+	end
+
+	if switched or joined ~= M.log_last then
+		local img = M.resources.log_img
+		img:clear()
+
+		for i, line in ipairs(shown) do
+			-- indexed2, so one bit per pixel and no antialiasing: at this
+			-- size the ramp costs four times the buffer and buys nothing a
+			-- reader would notice, and the page is the one that has to work
+			-- when memory is the thing that went wrong.
+			--
+			-- Through the helper, because img:text takes a baseline and not a
+			-- top edge -- passing the row's top renders the line above its
+			-- own buffer.
+			du.ttf_txt_left(line, M.font_16, img, g.x, (i - 1) * g.line_h,
+				{0, 1})
+		end
+
+		vesc.disp_render(img, L.page_x, g.top, colors.text_2)
+		M.log_last = joined
+	end
+end
+
 return M

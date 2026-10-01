@@ -19,6 +19,7 @@ local vp = require("lib.view_pages")
 local comms = require("lib.comms")
 local standalone = require("lib.standalone")
 local notify = require("lib.notify")
+local boot_log = require("lib.boot_log")
 local dash = require("lib.dash")
 
 vesc.set_print_prefix("DISP-")
@@ -34,6 +35,8 @@ vesc.set_print_prefix("DISP-")
 assert(vesc.disp_load("st7701", config.disp_rst, config.disp_lane_mbps),
 	"panel did not load")
 vesc.disp_orientation(config.disp_rotation)
+boot_log.step(string.format("panel st7701 %dx%d rot %d",
+	config.disp_w, config.disp_h, config.disp_rotation))
 
 -- Real PWM backlight. The pin is active-LOW, so the duty is inverted; the
 -- firmware parks it off in hw_init so nothing shows before the first draw.
@@ -54,8 +57,9 @@ local touch_ok = pcall(vesc.touch_load_gt911, config.touch_sda,
 if touch_ok then
 	pcall(vesc.touch_transform, config.touch_transforms[1],
 		config.touch_transforms[2], config.touch_transforms[3])
+	boot_log.step("touch gt911 ok")
 else
-	print("touch init failed; the dash will run but nothing can be pressed")
+	boot_log.step("TOUCH INIT FAILED -- nothing can be pressed")
 end
 
 --- fonts ---
@@ -90,7 +94,18 @@ notify.font = font_24
 
 dash.font_40 = font_40
 dash.font_24 = font_24
+-- The boot log draws with this one. Leaving it out is what made the log
+-- screen never appear: img:text with a nil font raises, and the pcall around
+-- the splash swallowed it, so the symptom was the VESC logo followed by the
+-- dash and no sign that anything had gone wrong.
+dash.font_16 = font_16
 dash.bl_set = bl_set
+
+-- Hold the boot log on screen after the splash. A development board earns
+-- this: the thing the log reports on is bring-up, and a display that came up
+-- wrong is exactly the one whose stored settings cannot be trusted to let you
+-- navigate to a page. Set to 0.0 to skip it.
+dash.boot_log_s = config.boot_log_s
 dash.version = require("version")
 
 --- board values the shared code asks for ---
@@ -122,4 +137,4 @@ require("lib.state").light_on = config.light_on_default
 
 dash.start(config)
 
-print("dash up")
+boot_log.step("dash up")

@@ -156,6 +156,12 @@ mode.current = 3
 --
 -- Stored rather than assigned, because the theme change further down reloads
 -- the settings and a mask that only existed in a field would be lost there.
+-- 0xFF, not every bit: the goldens were rendered from the lisp dash, whose
+-- catalog is the first eight pages. The boot log is bit 8 and has no lisp
+-- counterpart, so enabling it would shift the settings page, the shade and
+-- the keypad by one and make eleven of the fifteen comparisons meaningless.
+-- Leaving it off is also the check that adding a page disturbed none of the
+-- others.
 settings.write("page_mask", 0xFF)
 apply.all(cfg)
 

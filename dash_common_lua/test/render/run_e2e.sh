@@ -59,6 +59,25 @@ for n in $CASES; do
     echo "$out" | grep -qE 'over tolerance 0: 0 \(allowed 0\)' || fail=1
 done
 
+# The boot log page has no golden, because there is no lisp boot log to render
+# one from. It gets a measurement instead: every row has to carry ink, and
+# none may fall far below the median. That is the shape of the bug it had --
+# img:text takes a baseline rather than a top edge, so rows laid out from
+# their top edge draw above their own buffer and the first and last lines
+# come out wrong while the middle ones look fine.
+echo
+python3 "$VE/tools/luapack.py" \
+    --import-root .. --import-root ../.. \
+    --asset font18="$FONTS/roboto-bold-18-4c.bin" \
+    -o "$OUT/log.luapkg" log_p4.lua >/dev/null || exit 1
+
+geom=$("$RENDER" "$OUT/log.luapkg" "$OUT/log_final.ppm" 800 480 | grep '^geom')
+echo "log page: $geom"
+line_h=$(echo "$geom" | sed 's/.*line_h=\([0-9]*\).*/\1/')
+rows=$(echo "$geom" | sed 's/.*rows=\([0-9]*\).*/\1/')
+top=$(echo "$geom" | sed 's/.*top=\([0-9]*\).*/\1/')
+python3 check_log.py "$OUT/p4_log.ppm" "$top" "$line_h" "$rows" | tail -1 || fail=1
+
 [ -n "${KEEP:-}" ] || rm -f "$OUT"/*.ppm "$OUT"/*.luapkg
 
 if [ $fail -eq 0 ]; then

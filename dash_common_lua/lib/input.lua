@@ -64,6 +64,16 @@ end
 M.touch_x = 0
 M.touch_y = 0
 
+-- How many polls reported a finger, and how many presses and gestures came
+-- out the other end. Diagnostics, and the only ones that separate the three
+-- ways touch can be useless on a board where it is the sole input: the bus
+-- not answering (the firmware's own tally, which stays flat), the panel
+-- answering but reporting nothing (reads is zero), and the panel reporting
+-- fine while the regions or the dispatch are wrong (reads climbs and fires
+-- does not).
+M.reads = 0
+M.fires = 0
+
 M.btn_pressed = {[0] = false, false, false, false}
 
 -- How far through its long press each region is, 0.0 to 1.0, and nil when
@@ -149,6 +159,7 @@ M.down_y = 0
 
 local function call(fn)
 	if fn then
+		M.fires = M.fires + 1
 		fn()
 	end
 end
@@ -193,6 +204,7 @@ function M.step(x, y)
 	if touching then
 		M.touch_x = x
 		M.touch_y = y
+		M.reads = M.reads + 1
 	end
 
 	local region = touching and M.region(M.touch_x, M.touch_y) or nil

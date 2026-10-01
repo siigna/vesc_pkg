@@ -41,6 +41,11 @@ M.catalog = {
 	vp.page_chart,
 	vp.page_conf,
 	vp.page_cells,
+	-- Bit 8. Off in the default mask: it is a diagnostic, not something to
+	-- page past while riding. Adding it meant raising the page_mask bound in
+	-- settings.load from 0xFF to 0x1FF, which is the note at that bound --
+	-- without it the new page clamps away and cannot be enabled at all.
+	vp.page_log,
 }
 
 -- The three that are not in the rotation, in the order they are appended.

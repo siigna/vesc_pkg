@@ -289,10 +289,12 @@ function M.load(cfg)
 	-- view_static labels only 0-4, and dash_esc matches only 0-4.
 	v.drive_modes = M.clamp(M.read("drive_modes"), 1, 5, 5)
 
-	-- Bound is the last catalog page. The PAS page is bit 4 and off in the
-	-- default mask, since most vehicles have no pedals. Raise when a page is
-	-- added, or the new page cannot be enabled at all.
-	v.page_mask = M.clamp(M.read("page_mask"), 1, 0xFF, 0xF)
+	-- Bound is the last catalog page. The PAS page is bit 4 and the boot log
+	-- bit 8, both off in the default mask -- most vehicles have no pedals,
+	-- and a log is a diagnostic rather than something to page past while
+	-- riding. Raise when a page is added, or the new page cannot be enabled
+	-- at all.
+	v.page_mask = M.clamp(M.read("page_mask"), 1, 0x1FF, 0xF)
 
 	-- One bit per catalog row. Raise when the catalog grows.
 	v.setting_mask = M.clamp(M.read("setting_mask"), 0, 0x1FFF, 0xF)

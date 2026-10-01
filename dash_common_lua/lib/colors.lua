@@ -149,6 +149,11 @@ function M.build()
 	-- The accent as a four-entry ramp. theme_2 is the indexed2 one and cannot
 	-- colour text, which is drawn indexed4.
 	M.accent_aa = M.make_aa(M.bg, M.accent, 4)
+	-- The text colour as two entries, for text drawn into an indexed2 buffer:
+	-- one bit per pixel and no antialiasing. The boot log uses it, where the
+	-- ramp would cost four times the buffer and buy nothing a reader of
+	-- 18-pixel console text would notice.
+	M.text_2 = M.make_aa(M.bg, M.text, 2)
 	M.speed = {M.bg, M.shade(M.accent, 0.55), M.accent, M.text}
 	M.charging = {M.bg, 0x00C321, M.accent, M.text}
 
