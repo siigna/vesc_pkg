@@ -252,7 +252,7 @@
         ; The PAS page is bit 4 and is off in the default mask, since most
         ; vehicles have no pedals. Raise the upper bound when pages are added or
         ; the new page cannot be enabled at all.
-        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0xFF 0xF))
+        (setq settings-page-mask (setting-clamp (read-setting 'page-mask) 1 0x1FF 0xF))
         ; One bit per setting-catalog row. Raise the bound when the catalog
         ; grows, or the new row cannot be enabled at all.
         (setq settings-setting-mask (setting-clamp (read-setting 'setting-mask) 0 0x1FFF 0xF))

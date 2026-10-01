@@ -1083,10 +1083,99 @@
         (setq page-pin-state curr-state)
 })
 
+; --- the boot log ----------------------------------------------------------
+;
+; The board's own log, on the glass. Ported back from
+; dash_common_lua/lib/view_pages.lua, where it was written first.
+;
+; commands_printf sends to whichever port last spoke to the board, so every
+; line from bring-up went nowhere, and on a board with the console off it
+; could not go anywhere at all. Reading the ring over serial is no help
+; either: connecting resets the chip on these bridges, so the dump is always
+; of a board that just booted.
+;
+; The plainest page on the dash on purpose. Fixed rows, oldest at the top,
+; newest at the bottom, the text as it arrived. It reads like a console
+; because that is what it is, and a log that has been prettified is a log you
+; cannot trust to be the log.
+;
+; Left-aligned and clipped rather than scaled: a proportional font makes a
+; long path wider than the panel, and cutting the end off a line beats
+; shrinking every line to suit the worst one.
+; The row pitch comes from the font, and the gap wanted is a few pixels.
+;
+; Worked out per call rather than at load: the fonts do not exist when the
+; views are evaluated in every caller -- the render harness imports them after
+; the views -- and a top-level def reading a font failed there while working
+; on a board.
+(def page-log-last "")
+
+(defun page-log (s) {
+        (var line-h (+ (second (ttf-glyph-dims font-16 "D")) 6))
+        (var rows (/ page-h line-h))
+        (var cap (second (ttf-glyph-dims font-16 "D")))
+        (var lines (boot-log-lines))
+
+        ; The last rows that fit: the end of a log is the part worth having
+        ; when it does not all fit.
+        ; `first` would be a redefinition: it is a LispBM builtin, and
+        ; binding it with var fails at the call rather than at load.
+        (var total (length lines))
+        (var from (if (> total rows) (- total rows) 0))
+        (var shown nil)
+        (looprange i from total (setq shown (append shown (list (ix lines i)))))
+
+        (var joined (str-join shown "\n"))
+
+        (if s (setq page-resources (list
+                (cons 'log-img (img-buffer dm-pool 'indexed2 page-w
+                        (* rows line-h))))))
+
+        ; Redrawn whole whenever the text changes. No per-row dirty check
+        ; because appending one line moves every row, which is the common
+        ; case: the cheap thing here is comparing the joined text.
+        (if (or s (not-eq joined page-log-last)) {
+                (var img (assoc page-resources 'log-img))
+                (img-clear img)
+
+                (looprange i 0 (length shown) {
+                        ; indexed2, so one bit per pixel: at this size a
+                        ; four-entry ramp costs four times the buffer and buys
+                        ; nothing a reader would notice, and this is the page
+                        ; that has to work when memory is what went wrong.
+                        ;
+                        ; This renders thinner than the Lua dash's same page,
+                        ; measurably: about 760 ink pixels a row against 2450,
+                        ; because a partially covered pixel lands on index 0
+                        ; here and on index 1 there. Both are legible and
+                        ; neither is wrong for a 1-bit buffer, so the two are
+                        ; left differing rather than one being bent to match --
+                        ; this is the only page in either dash with no golden,
+                        ; and the property that matters, every row carrying
+                        ; ink, holds for both.
+                        ;
+                        ; The y is a baseline, not a top edge -- ttf-txt-center
+                        ; adds the cap height of "D" for that reason -- so a
+                        ; row laid out from its top draws above its own buffer.
+                        (ttf-text img 8 (+ (* i line-h) cap)
+                            '(0 1) font-16 (ix shown i))
+                })
+
+                (disp-render img page-x page-y colors-text-2)
+                (setq page-log-last joined)
+        })
+})
+
 ; Index order is stored in settings-page-mask, so only append here.
 (def page-catalog
     (list page-live page-trip page-session page-batt page-pas page-chart
-          page-conf page-cells))
+          page-conf page-cells
+          ; Bit 8. Off in the default mask: a diagnostic, not something to page
+          ; past while riding. Adding it meant raising the page-mask bound in
+          ; settings-load from 0xFF to 0x1FF, which is what the note at that
+          ; bound says to do -- without it the new page clamps away and cannot
+          ; be enabled at all.
+          page-log))
 
 ; The settings page is at page-num and the quick shade one past it. Neither is
 ; in the rotation: paging is modulo page-num, so nothing can step onto them and

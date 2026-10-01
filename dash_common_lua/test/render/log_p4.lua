@@ -17,10 +17,18 @@ vesc.sleep = function() end
 
 -- Lines with descenders and capitals in the first and last, so a baseline
 -- that is off in either direction loses ink somewhere measurable.
+--
+-- The whole list is stubbed, not just the firmware ring, because the lisp
+-- dash's page is compared against this render: what is being compared is the
+-- drawing -- baseline, clipping, palette -- and both sides have to be handed
+-- the same text for that to mean anything.
 local FAKE = {}
 for i = 1, 30 do
 	FAKE[i] = string.format("[%7.3f] Qgjpy line %d ABCDEFG 0123456789", i * 0.1, i)
 end
+
+local boot_log = require("lib.boot_log")
+boot_log.lines = function() return FAKE end
 
 vesc.log_lines = function() return FAKE, 0 end
 vesc.touch_stats = function() return 4321, 0, 0 end

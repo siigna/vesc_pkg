@@ -14,6 +14,7 @@
 (def settings-slot-cols (list 0xfbfcfc 0xfbfcfc 0xfbfcfc 0xfbfcfc))
 
 (def colors-theme-2 nil)
+(def colors-text-2 nil)
 (def colors-speed nil)
 (def colors-charging nil)
 (def colors-vesc nil)
@@ -137,6 +138,11 @@
 
 (defun colors-build () {
         (setq colors-theme-2 (colors-make-aa color-bg color-accent 2))
+        ; The text colour as two entries, for text drawn into an indexed2
+        ; buffer: one bit per pixel and no antialiasing. The boot log page uses
+        ; it, where the ramp would cost four times the buffer and buy nothing a
+        ; reader of 16-pixel console text would notice.
+        (setq colors-text-2 (colors-make-aa color-bg color-text 2))
         ; The accent as a four-entry ramp. colors-theme-2 is the indexed2 one
         ; and cannot colour text, which is drawn indexed4.
         (setq colors-accent-aa (colors-make-aa color-bg color-accent 4))
