@@ -40,4 +40,56 @@ function M.smooth_step(sv, v, k, lo, hi)
 	return n
 end
 
+--- the rolling chart ---
+--
+-- A ring of samples, newest first when read. The lisp keeps it in a byte
+-- buffer written as f32 because a hundred-element list would be allocated and
+-- walked on every redraw; a Lua array of numbers is already that, so the
+-- buffer goes away and the indexing stays.
+--
+-- chart_max is ten seconds at the 10 Hz the stats thread pushes. The window
+-- setting reads fewer of them rather than making the ring bigger, which is
+-- why window() clamps: a longer setting must not read past what was
+-- allocated. That constraint is inherited rather than necessary here, and
+-- kept so both dashes show the same history for the same setting.
+M.chart_max = 100
+M.chart_head = 0
+M.chart_count = 0
+M.chart_tick = 0
+M.chart = {}
+
+-- One sample into the ring. The oldest is dropped once it is full.
+function M.chart_push(v)
+	M.chart[M.chart_head + 1] = v
+	M.chart_head = (M.chart_head + 1) % M.chart_max
+	if M.chart_count < M.chart_max then
+		M.chart_count = M.chart_count + 1
+	end
+end
+
+-- Sample i counting back from the newest, 0 being the newest.
+function M.chart_at(i)
+	local idx = (M.chart_head - 1 - i + 2 * M.chart_max) % M.chart_max
+	return M.chart[idx + 1]
+end
+
+-- How many samples the window covers.
+function M.chart_window(chart_secs)
+	local n = 10 * chart_secs
+	if n > M.chart_max then
+		n = M.chart_max
+	end
+	if n > M.chart_count then
+		return M.chart_count
+	end
+	return n
+end
+
+-- Cleared when the charted source changes, since the history is of the old
+-- one.
+function M.chart_reset()
+	M.chart_head = 0
+	M.chart_count = 0
+end
+
 return M

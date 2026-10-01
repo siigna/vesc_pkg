@@ -231,4 +231,77 @@ function M.proc_sid(id, data)
 	return true
 end
 
+--- transmit ---
+--
+-- Builders return the frame as a string and send() puts it on the bus, which
+-- is the one structural change from the lisp. There every frame is built and
+-- handed to can-send-sid in the same expression, so the only way to check
+-- what goes out is to watch a bus; here the bytes are a value a test can
+-- assert on and send() is replaceable.
+--
+-- bufset defaults to big-endian too -- decode_append_args sets *be = true --
+-- so these match the decoders above.
+
+M.send = function(id, data)
+	vesc.can_send_sid(id, data)
+end
+
+-- SID 201: what this display is asking the controller for, every 100 ms.
+--
+-- drive_mode is the locked mode, not the stored one: while the PIN lock is up
+-- this asserts neutral, whose current scale is zero, and leaves the stored
+-- mode alone so unlocking restores it. Passing it in rather than reaching for
+-- lib/pin.lua keeps that decision at the call site, where it is visible.
+--
+-- Byte 2 is the walk assist request; the controller expires it after half a
+-- second, so 100 ms is well inside. Byte 3 is the signal bitfield, whose horn
+-- bit is momentary and so computed per frame rather than latched.
+function M.build_201(drive_mode, light_on, walk, sig_byte)
+	return string.pack(">I1I1I1I1I1I1I1I1",
+			drive_mode, light_on and 1 or 0, walk and 1 or 0, sig_byte,
+			0, 0, 0, 0)
+end
+
+-- SID 202: the wheelie-control settings, as the rider has them.
+--
+-- Byte 1 is unused: the lisp writes an i8 at 0 and i16s at 2, 4 and 6, so the
+-- gap is part of the layout rather than an oversight to tidy up.
+function M.build_202(whl_active, whl_start, whl_end, whl_kd)
+	return string.pack(">i1i1i2i2i2",
+			whl_active, 0,
+			math.floor(whl_start * 10.0),
+			math.floor(whl_end * 10.0),
+			math.floor(whl_kd * 10000.0))
+end
+
+-- SID 205: the controller's own PIN lock. Command 3 sets whether it requires
+-- a code at every power up, 4 releases the current one. The requirement is
+-- stored there and the release is not, so a power cycle comes back locked --
+-- which is the point of holding it on the controller rather than only here.
+function M.build_205(cmd, val)
+	return string.pack(">I1I1I1I1I1I1I1I1", cmd, val, 0, 0, 0, 0, 0, 0)
+end
+
+-- SID 250: one-shot events. 0 toggles cruise, 1 asks the controller to save
+-- because power may be about to go.
+function M.build_250(event_id)
+	return string.pack(">I1I1", event_id, 0)
+end
+
+-- Sent three times rather than once. This is a single frame with no
+-- acknowledgement, and a lost unlock leaves a rider tapping a correct code at
+-- a bike that will not move.
+--
+-- The 60 ms between tries is the caller's: it is the one part that has to
+-- sleep, and a module that sleeps cannot be unit tested.
+M.pin_cmd_repeats = 3
+
+function M.pin_cmd_frames(cmd, val)
+	local out = {}
+	for i = 1, M.pin_cmd_repeats do
+		out[i] = M.build_205(cmd, val)
+	end
+	return out
+end
+
 return M

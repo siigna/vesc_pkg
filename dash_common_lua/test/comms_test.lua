@@ -194,4 +194,55 @@ t.ok("controller frames count", comms.rx_cnt == before + 1)
 -- A short frame raises rather than decoding garbage.
 t.ok("a truncated frame raises", not pcall(comms.proc_sid, 20, "\1\2"))
 
+-- --- transmit ---
+--
+-- The builders are checked by decoding what they produce, which is the same
+-- trick as the receive tests and catches the same class of mistake: a frame
+-- the controller would read as a different mode or a different speed.
+
+-- SID 201. Neutral is 1, and a locked bike must assert exactly that.
+local f201 = comms.build_201(1, true, false, 0x0A)
+t.ok("201 is eight bytes", #f201 == 8)
+local m, light, walk, sigb = string.unpack(">I1I1I1I1", f201)
+t.ok("201 carries the mode",      m == 1)
+t.ok("201 carries the light",     light == 1)
+t.ok("201 carries walk as false", walk == 0)
+t.ok("201 carries the signal byte", sigb == 0x0A)
+
+local f201b = comms.build_201(4, false, true, 0)
+local m2, light2, walk2 = string.unpack(">I1I1I1", f201b)
+t.ok("201 mode 4",        m2 == 4)
+t.ok("201 light off",     light2 == 0)
+t.ok("201 walk requested", walk2 == 1)
+
+-- SID 202. Byte 1 is a deliberate gap, and the scales are part of the
+-- protocol: a kd of 0.0025 goes out as 25.
+local f202 = comms.build_202(1, 12.5, 30.0, 0.0025)
+t.ok("202 is eight bytes", #f202 == 8)
+local act, gap, start, fin, kd = string.unpack(">i1i1i2i2i2", f202)
+t.ok("202 active",        act == 1)
+t.ok("202 byte 1 is zero", gap == 0)
+t.ok("202 start in tenths", start == 125)
+t.ok("202 end in tenths",   fin == 300)
+t.ok("202 kd scaled by 10000", kd == 25)
+
+-- SID 205, and that it is sent more than once.
+local frames205 = comms.pin_cmd_frames(3, 1)
+t.ok("pin command repeats", #frames205 == 3)
+local cmd, val = string.unpack(">I1I1", frames205[1])
+t.ok("pin command id",   cmd == 3)
+t.ok("pin command value", val == 1)
+t.ok("every repeat is identical", frames205[1] == frames205[3])
+
+-- SID 250.
+local f250 = comms.build_250(1)
+t.ok("250 is two bytes", #f250 == 2)
+t.ok("250 carries the event", string.unpack(">I1", f250) == 1)
+
+-- send() is replaceable, which is the point of splitting build from send.
+local sent = {}
+comms.send = function(id, data) table.insert(sent, {id = id, data = data}) end
+comms.send(201, f201)
+t.ok("send is interceptable", #sent == 1 and sent[1].id == 201)
+
 t.report("comms")
