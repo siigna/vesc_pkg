@@ -74,7 +74,7 @@ return {
 	-- Log a per-job timing line once a second. Off for a dash being ridden;
 	-- on here because with one timer every job spends the same budget, so
 	-- "the dash uses N%" says nothing about which job to look at.
-	timing = true,
+	timing = false,
 
 	-- Show the touch regions over the running dash for this long, once, a
 	-- second after it comes up. Zero is off. Every label is read back out of
