@@ -179,22 +179,20 @@ dash.start(config)
 
 -- The UI channel.
 --
--- NOT VERIFIED ON HARDWARE. The handler is installed -- vesc.on_app_data is a
--- function and the registration runs -- and no packet ever reaches it: no
--- reply, and not even the refusal print that a malformed command must
--- produce. A minimal script registering on_app_data, on_can and a 20 ms timer
--- receives packets on the same firmware, and so did a bare probe closure
--- registered from this file, so it is neither the binding, the event rate nor
--- the position of the call. What differs is the closure body, which should be
--- irrelevant, so one of my observations is wrong rather than the explanation
--- being subtle.
+-- Here rather than inside dash.start for no deep reason -- a board file
+-- registering its own channel is a reasonable place for it -- but what took
+-- a long time to find is why it appeared not to work at all.
 --
--- lib/appdata.lua itself is unit tested, 69 checks over every command and
--- every malformed shape. What is unproven is delivery, not parsing.
+-- dash.start used to hold the boot log on screen for four seconds with
+-- vesc.sleep, which is vTaskDelay: the engine task blocks, drains no events,
+-- and the subscription mirrors a producer checks are not refreshed until the
+-- main chunk returns. Every packet arriving in that window was discarded
+-- before it reached the queue. It presented as a race -- the same test
+-- passing and failing with no change -- because whether a packet arrived
+-- depended on whether the chunk happened to have finished.
 --
--- Left here rather than reverted so the next attempt starts from working
--- parsing and a known-bad delivery path. config.appdata_trace prints each
--- packet as it arrives, which is the first thing to turn on.
+-- The boot log and the region overlay are tick phases now, so the chunk
+-- returns promptly and this works. config.appdata_trace prints each packet.
 vesc.on_app_data(function(data)
 	local ok, res, why = pcall(appdata.handle, data)
 	if not ok then

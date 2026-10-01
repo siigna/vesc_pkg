@@ -333,39 +333,42 @@ t.ok("the touch point reached the view", vp.touch_x == 123 and vp.touch_y == 234
 t.ok("so did the hold region",           vp.btn_hold_region == 2)
 t.near("and its progress",               vp.btn_hold_progress, 0.75)
 
---- the touch region overlay ---
+--- the startup overlay phases ---
 --
--- A state machine over the tick: wait for the dash to settle, show, then
--- force a repaint. While it is showing the views stand down, the way they do
--- under the quick shade, because they would otherwise repaint over it a
--- field at a time.
+-- A list of phases driven from the tick: a gap, then the region overlay, with
+-- the boot log before both when it is enabled. Driven through M.tick rather
+-- than by calling the step directly, so the test covers the wiring -- which
+-- is what catches a nil guard, the overlay being the only job dispatched from
+-- outside the guarded list.
 --
--- Driven through M.tick rather than by calling region_step, so the test
--- covers the wiring. That is what catches a nil guard: the overlay is the
--- only job dispatched from outside the guarded list.
+-- Nothing here sleeps. The boot log used to hold the main chunk for four
+-- seconds with vesc.sleep, and because the engine task blocks there it
+-- drained no events and refreshed no subscriptions: every packet arriving in
+-- that window was dropped before it reached the queue. These phases exist so
+-- the chunk returns promptly.
 instrument()
+dash.boot_log_s = 0.0
 dash.region_overlay_s = 5.0
 dash.region_overlay_delay_s = 1.0
-dash.region_state = nil
-dash.region_until = 0.0
+dash.phases = nil
+dash.phase_i = 0
+dash.phase_until = 0.0
 
 local drew = 0
 dash.region_overlay = function() drew = drew + 1 end
 dash.static_step = counter("static")
 pages.step = counter("pages")
 
--- The boundaries are exact, so the counts are too: at 20 ms a tick, the
--- delay of 1.0 s falls on tick 50 and the 5.0 s window ends on tick 300.
--- Asserting "the first second" as 50 ticks had it fire inside the window it
--- was supposed to precede.
-for _ = 1, 49 do dash.tick() end
-t.ok("nothing drawn before the delay elapses", drew == 0)
-t.ok("and the views ran",                      (ran.static or 0) > 0)
+-- The boundaries are exact, so the counts are too. At 20 ms a tick the gap
+-- ends on the tick whose time reaches 1.0 s, which is the 51st: the first
+-- tick is at 0.02 s, not 0.
+for _ = 1, 50 do dash.tick() end
+t.ok("nothing drawn during the gap", drew == 0)
+t.ok("and the views ran through it", (ran.static or 0) > 0)
 
--- Tick 50 is the first at or past the delay.
 local static_at_show = ran.static
 dash.tick()
-t.ok("drawn on the tick the delay elapses", drew == 1)
+t.ok("drawn on the tick the gap ends", drew == 1)
 
 -- Well inside the window: still one draw, views still down.
 for _ = 1, 100 do dash.tick() end
@@ -373,14 +376,14 @@ t.ok("not redrawn every tick", drew == 1)
 t.ok("the views stood down",   ran.static == static_at_show)
 t.ok("pages too",              ran.pages == static_at_show)
 
--- Still inside at tick 299.
+-- Still inside just before the end. The draw landed on tick 51, so the window
+-- closes on the first tick at or past 6.02 s, which is tick 301.
 for _ = 1, 149 do dash.tick() end
 t.ok("still one draw",   drew == 1)
 t.ok("views still down", ran.static == static_at_show)
 
--- Tick 300 is the first at or past the end. The views come back and the
--- repaint is forced, because their dirty tracking was paused and has no idea
--- what the overlay covered.
+-- Past it: the repaint is forced, because the views' dirty tracking was
+-- paused and has no idea what the overlay covered.
 state.view_force_static = false
 state.view_force_pages = false
 dash.tick()
@@ -390,20 +393,60 @@ t.ok("and a page repaint",          state.view_force_pages)
 for _ = 1, 10 do dash.tick() end
 t.ok("the views resumed", ran.static > static_at_show)
 
--- And it does not come back.
 drew = 0
 for _ = 1, 400 do dash.tick() end
-t.ok("the overlay is one-shot", drew == 0)
+t.ok("the phases are one-shot", drew == 0)
 
--- Off by default: a dash being ridden should not cover itself every boot.
+--- the boot log phase ---
+--
+-- Drawn once on entry and updated every tick while it is up, which is what
+-- lets the touch probe under it follow a finger without the phase sleeping.
 instrument()
+dash.boot_log_s = 2.0
 dash.region_overlay_s = 0.0
-dash.region_state = nil
+dash.phases = nil
+dash.phase_i = 0
+dash.phase_until = 0.0
+
+local log_drawn, log_updates = 0, 0
+dash.boot_log_splash = function() log_drawn = log_drawn + 1 end
+dash.boot_log_probe = function() log_updates = log_updates + 1 end
 dash.static_step = counter("static")
-drew = 0
+pages.step = counter("pages")
+
+dash.tick()
+t.ok("the boot log is drawn on the first tick", log_drawn == 1)
+t.ok("and the views stand down immediately",    (ran.static or 0) == 0)
+
+for _ = 1, 50 do dash.tick() end
+t.ok("drawn once",          log_drawn == 1)
+t.ok("and updated per tick", log_updates == 50)
+t.ok("views still down",     (ran.static or 0) == 0)
+
+-- 2.0 s is tick 100; past it the views take over.
+for _ = 1, 60 do dash.tick() end
+t.ok("the views resumed after the window", (ran.static or 0) > 0)
+t.ok("and the log was not redrawn",        log_drawn == 1)
+
+-- Both disabled: the views run from the very first tick, which is what a
+-- dash being ridden should do.
+instrument()
+dash.boot_log_s = 0.0
+dash.region_overlay_s = 0.0
+dash.phases = nil
+dash.phase_i = 0
+dash.static_step = counter("static")
+log_drawn, drew = 0, 0
+dash.boot_log_splash = function() log_drawn = log_drawn + 1 end
+dash.region_overlay = function() drew = drew + 1 end
+
+-- Two ticks, not one: the static view runs on every second tick, so one tick
+-- proves nothing about whether it was allowed to.
+dash.tick()
+dash.tick()
+t.ok("no phases: the views run at once", (ran.static or 0) > 0)
 for _ = 1, 400 do dash.tick() end
-t.ok("disabled: never drawn", drew == 0)
-t.ok("and the views run throughout", (ran.static or 0) > 0)
+t.ok("and nothing overlays them", log_drawn == 0 and drew == 0)
 
 t.unstrict_globals()
 

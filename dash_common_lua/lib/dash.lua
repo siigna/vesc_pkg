@@ -276,30 +276,31 @@ function M.boot_log_splash()
 	vesc.disp_clear(colors.bg)
 	vesc.disp_render(img, 0, top, colors.text_2)
 
-	-- The probe, polled at the input rate so a tap is not missed, redrawn
-	-- only when the text changes so a still finger costs nothing.
-	local probe = vesc.img_buffer("indexed2", L.disp_w, line_h)
-	local probe_y = top + log_rows * line_h
-	local shown = nil
-	local ticks = math.floor(M.boot_log_s * 1000 / M.period_ms)
+	-- The probe line's buffer and position are kept for boot_log_probe,
+	-- which the tick calls: this draws the log once and the probe updates
+	-- over it.
+	M.probe_img = vesc.img_buffer("indexed2", L.disp_w, line_h)
+	M.probe_y = top + log_rows * line_h
+	M.probe_shown = nil
+end
 
-	for _ = 1, ticks do
-		-- Through step(), not just touch_read, so input.reads counts and the
-		-- probe reports the same number the dash will.
-		input.poll()
-
-		local txt = M.touch_probe_line()
-		if txt ~= shown then
-			shown = txt
-			probe:clear()
-			du.ttf_txt_left(txt, M.font_16, probe, 8, 0, {0, 1})
-			vesc.disp_render(probe, 0, probe_y, colors.theme_2)
-		end
-
-		vesc.sleep(M.period_ms / 1000.0)
+-- One update of the probe line under the boot log. Called from the tick, so
+-- the finger is read at the input rate and the text is redrawn only when it
+-- changes -- a still finger costs nothing.
+function M.boot_log_probe()
+	if not M.probe_img then
+		return
 	end
 
-	vesc.disp_clear(colors.bg)
+	local txt = M.touch_probe_line()
+	if txt == M.probe_shown then
+		return
+	end
+
+	M.probe_shown = txt
+	M.probe_img:clear()
+	du.ttf_txt_left(txt, M.font_16, M.probe_img, 8, 0, {0, 1})
+	vesc.disp_render(M.probe_img, 0, M.probe_y, colors.theme_2)
 end
 
 -- Faults are reported and swallowed. See the note at the top: one raise here
@@ -486,31 +487,91 @@ end
 -- showing, and done. While it is showing the views are skipped, the way they
 -- are under the quick shade -- and for the same reason, which is that they
 -- would otherwise repaint over it a field at a time.
+--- the startup overlays ---
+--
+-- The boot log and the region overlay, both driven from the tick rather than
+-- by sleeping in the main chunk.
+--
+-- That is not a tidy-up. The chunk used to hold the boot log for four seconds
+-- with vesc.sleep, which is vTaskDelay: the engine task blocks, so it drains
+-- no events, and the subscription mirrors a producer checks are not refreshed
+-- until the chunk returns. Every CAN frame and every app data packet arriving
+-- in that window was discarded before it reached the queue.
+--
+-- It showed up as the package UI's channel not working, and as a race rather
+-- than a steady failure -- whether a packet arrived depended on whether the
+-- chunk happened to have finished, so the same test passed and failed with no
+-- change to the code. Which is also why it took so long to find.
+--
+-- Each phase is {name, duration, draw, update}: draw runs once on entry,
+-- update every tick while it is up. Returning true means the views stand down,
+-- the way they do under the quick shade.
+M.phases = nil
+M.phase_i = 0
+M.phase_until = 0.0
+
+function M.phase_list()
+	local list = {}
+
+	if M.boot_log_s > 0.0 then
+		list[#list + 1] = {
+			name = "boot_log",
+			secs = M.boot_log_s,
+			draw = M.boot_log_splash,
+			update = M.boot_log_probe,
+		}
+	end
+
+	if M.region_overlay_s > 0.0 then
+		-- The delay is a phase of its own rather than a special case, so the
+		-- dash draws itself once before the regions go over it.
+		list[#list + 1] = {name = "settle", secs = M.region_overlay_delay_s}
+		list[#list + 1] = {
+			name = "regions",
+			secs = M.region_overlay_s,
+			draw = M.region_overlay,
+		}
+	end
+
+	return list
+end
+
 function M.region_step(secs)
-	if M.region_overlay_s <= 0.0 or M.region_state == "done" then
+	if M.phases == nil then
+		M.phases = M.phase_list()
+		M.phase_i = 0
+	end
+
+	if M.phase_i > #M.phases then
 		return false
 	end
 
-	if M.region_state == nil then
-		if secs < M.region_overlay_delay_s then
+	-- Entering the next phase.
+	if M.phase_i == 0 or secs >= M.phase_until then
+		M.phase_i = M.phase_i + 1
+		local ph = M.phases[M.phase_i]
+
+		if ph == nil then
+			-- Past the last one: repaint the lot, because the views' dirty
+			-- tracking was paused and has no idea what was covered.
+			state.view_force_static = true
+			state.view_force_pages = true
 			return false
 		end
-		M.region_state = "showing"
-		M.region_until = secs + M.region_overlay_s
-		guard("region_overlay", M.region_overlay)
-		return true
+
+		M.phase_until = secs + ph.secs
+		if ph.draw then
+			guard(ph.name, ph.draw)
+		end
+		-- A phase with no draw is a gap, and the views run through it.
+		return ph.draw ~= nil
 	end
 
-	if secs >= M.region_until then
-		M.region_state = "done"
-		-- Closing repaints the lot: the views' dirty tracking was paused and
-		-- has no idea what the overlay covered.
-		state.view_force_static = true
-		state.view_force_pages = true
-		return false
+	local ph = M.phases[M.phase_i]
+	if ph.update then
+		guard(ph.name .. "_update", ph.update)
 	end
-
-	return true
+	return ph.draw ~= nil
 end
 
 --- the tick ---
@@ -662,12 +723,9 @@ function M.start(cfg)
 		guard("splash", M.splash)
 	end
 
-	-- After the splash, so the log is the last thing on screen before the
-	-- dash takes over and a photograph of a board that came up wrong catches
-	-- the reason rather than the logo.
-	if M.boot_log_s > 0.0 then
-		guard("boot_log", M.boot_log_splash)
-	end
+	-- The boot log is a tick phase now, not something start() waits for. See
+	-- the note on the phase machine: blocking the chunk here dropped every
+	-- event that arrived while it was held.
 
 	vs.frame()
 	vs.reset()
