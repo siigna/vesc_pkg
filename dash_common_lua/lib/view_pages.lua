@@ -595,4 +595,234 @@ function M.page_live(switched)
 	M.live_last = curr
 end
 
+-- --- Cells page: one bar per cell ---
+--
+-- The battery page shows aggregates, which cannot show a weak cell: a pack
+-- with one cell 0.3 V down reads as a slightly low minimum and nothing else.
+-- This draws every cell, so the odd one out is visible at a glance.
+--
+-- bms_val takes a cell index for v_cell and bal_state and errors outside
+-- 0..cell_num, so the count is read first and trusted for the bounds.
+
+M.cells_max = 24
+
+function M.cells_count()
+	if not state.battery_a_connected then
+		return 0
+	end
+	local n = vesc.bms_val("cell_num")
+	if n < 0 then return 0 end
+	if n > M.cells_max then return M.cells_max end
+	return n
+end
+
+-- A read can fail on a pack that reports a count it cannot then produce cells
+-- for, which would take the page down rather than showing the rest.
+function M.cell_v(i)
+	local ok, v = pcall(vesc.bms_val, "v_cell", i)
+	return ok and v or 0.0
+end
+
+function M.cell_balancing(i)
+	local ok, v = pcall(vesc.bms_val, "bal_state", i)
+	return ok and v or false
+end
+
+function M.cells_state()
+	local n = M.cells_count()
+	local lo, hi, sum = 9.9, 0.0, 0.0
+
+	for i = 0, n - 1 do
+		local v = M.cell_v(i)
+		if v < lo then lo = v end
+		if v > hi then hi = v end
+		sum = sum + v
+	end
+
+	-- Rounded to 10 mV: the readings jitter in the last digit, and an
+	-- unrounded state would redraw the whole page every frame.
+	return {
+		n,
+		M.round_x(lo, 0.01),
+		M.round_x(hi, 0.01),
+		M.round_x(n > 0 and sum / n or 0.0, 0.01),
+	}
+end
+
+M.cells_last = {}
+
+local function same(a, b)
+	if #a ~= #b then return false end
+	for i = 1, #a do
+		if a[i] ~= b[i] then return false end
+	end
+	return true
+end
+
+function M.page_cells(switched)
+	local L = M.L
+	local cells_h = L.page_h - 2 - M.row_h
+	local curr = M.cells_state()
+
+	if switched then
+		M.resources = {
+			cells_img = vesc.img_buffer("indexed4", L.page_w, cells_h),
+			cells_txt = vesc.img_buffer("indexed4", L.page_w, M.row_h),
+		}
+		M.page_clear()
+	end
+
+	if switched or not same(curr, M.cells_last) then
+		local n = curr[1]
+		local img = M.resources.cells_img
+		img:clear()
+
+		if n == 0 then
+			du.ttf_txt_center("No BMS on the bus", M.font_24, img)
+		else
+			-- Scaled to the spread in the pack rather than to an absolute
+			-- range: the whole point is the difference between cells, and on a
+			-- healthy pack that is tens of millivolts, which an absolute 2.5
+			-- to 4.2 V scale would render as 24 identical bars. A 20 mV floor
+			-- keeps a balanced pack from magnifying noise into a skyline.
+			local lo, hi = curr[2], curr[3]
+			local span = (hi - lo) > 0.02 and (hi - lo) or 0.02
+			local bw = L.page_w // n
+			local pad = bw > 6 and 2 or 1
+
+			for i = 0, n - 1 do
+				local v = M.cell_v(i)
+				local f = (v - lo) / span
+				local h = 3 + math.floor(f * (cells_h - 6))
+				local x = i * bw + pad
+				local w = bw - 2 * pad
+
+				-- A cell at the bottom of the spread has almost no bar left,
+				-- which is the reading that matters most and the hardest to
+				-- see. So the lowest cell and any balancing cell also get a
+				-- full-height outline: the column stays visible whatever its
+				-- level is.
+				local mark = (v <= lo) or M.cell_balancing(i)
+				if mark then
+					img:rectangle(x, 0, w, cells_h, 1, false)
+				end
+				img:rectangle(x, cells_h - h, w, h, mark and 3 or 2, true)
+			end
+		end
+
+		vesc.disp_render(img, L.page_x, L.page_y, colors.text_aa)
+
+		local txt = M.resources.cells_txt
+		txt:clear()
+		local _, gh = M.font_16:glyph_dims("D")
+		local by = gh + (M.row_h - gh) // 2
+
+		txt:text(4, by, M.font_16, string.format("%dS  min %.2f  avg %.2f",
+			n, curr[2], curr[4]), 1, true)
+
+		local spread = string.format("spread %.0f mV", 1000.0 * (curr[3] - curr[2]))
+		local iw = M.font_16:measure(spread)
+		txt:text(L.page_w - iw - 4, by, M.font_16, spread, 1, true)
+
+		vesc.disp_render(txt, L.page_x, L.page_y + cells_h + 2, colors.text_aa)
+	end
+
+	M.cells_last = curr
+end
+
+-- --- Chart page: a rolling window of one live value ---
+
+-- Which slot is charted and how wide the window is. Injected by the settings
+-- layer.
+M.chart_src = 4
+M.chart_secs = 10
+
+-- The trace, autoscaled to what is in the window.
+--
+-- Returns the bounds, or nil with fewer than two samples -- which is every
+-- frame of this page after a boot or a session reset, before the ring has
+-- filled. The lisp needed defunret for that early exit and threw
+-- variable_not_bound without it; in Lua it is an ordinary return, but the
+-- case is just as live.
+--
+-- A flat line is centred rather than filling the height, which is what
+-- dividing by a zero range would do.
+function M.chart_draw(img, w, h, n)
+	local stats = require("lib.statistics")
+
+	if n < 2 then
+		return nil
+	end
+
+	local lo = stats.chart_at(0)
+	local hi = lo
+	for i = 0, n - 1 do
+		local v = stats.chart_at(i)
+		if v < lo then lo = v end
+		if v > hi then hi = v end
+	end
+
+	local span = hi - lo
+	local flat = span < 0.0001
+
+	-- Oldest on the left, newest on the right.
+	local x_pre, y_pre = 0, 0
+	for i = 0, n - 1 do
+		local v = stats.chart_at(n - 1 - i)
+		local f = flat and 0.5 or du.map_range_01(v, lo, hi)
+		local x = i * (w - 1) // (n - 1)
+		local y = h - 2 - math.floor(f * (h - 4))
+		if i > 0 then
+			img:line(x_pre, y_pre, x, y, 1, 2)
+		end
+		x_pre, y_pre = x, y
+	end
+
+	return {lo, hi}
+end
+
+function M.page_chart(switched)
+	local stats = require("lib.statistics")
+	local L = M.L
+	local chart_h = L.page_h - 2 - M.row_h
+
+	if switched then
+		M.resources = {
+			chart_img = vesc.img_buffer("indexed2", L.page_w, chart_h),
+			chart_txt = vesc.img_buffer("indexed4", L.page_w, M.row_h),
+		}
+		M.page_clear()
+	end
+
+	local n = stats.chart_window(M.chart_secs)
+	local img = M.resources.chart_img
+	img:clear()
+	local bounds = M.chart_draw(img, L.page_w, chart_h, n)
+	vesc.disp_render(img, L.page_x, L.page_y, {colors.bg, colors.accent})
+
+	-- Source, window, and what the trace spans. The newest sample is the
+	-- right hand edge, so it is the same number a live cell would show.
+	local txt = M.resources.chart_txt
+	txt:clear()
+	local unit = stats.slot_unit(M.chart_src)
+
+	-- text takes a baseline, not a top edge, so a y of zero draws the line
+	-- entirely above the buffer and nothing appears. Centred from the glyph
+	-- height, so it holds for whatever row height a board profile uses.
+	local _, gh = M.font_16:glyph_dims("D")
+	local by = gh + (M.row_h - gh) // 2
+
+	txt:text(4, by, M.font_16,
+		stats.slot_label(M.chart_src) .. string.format("  %d s", M.chart_secs),
+		1, true)
+
+	local info = bounds
+		and string.format("%.1f to %.1f %s", bounds[1], bounds[2], unit)
+		or "collecting"
+	local iw = M.font_16:measure(info)
+	txt:text(L.page_w - iw - 4, by, M.font_16, info, 1, true)
+
+	vesc.disp_render(txt, L.page_x, L.page_y + chart_h + 2, colors.text_aa)
+end
+
 return M
