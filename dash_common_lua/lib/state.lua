@@ -91,6 +91,16 @@ return {
 	pas_assist_w = 0,
 	pas_rx = false,
 
+	-- Maxima since the last session reset. Held separately from the live
+	-- values because a reset clears these and not those.
+	kmh_max = 0.0,
+	kw_max = 0.0,
+	amps_now_max = 0.0,
+	temp_esc_max = 0.0,
+	temp_motor_max = 0.0,
+	temp_battery_max = 0.0,
+	session_start = 0,
+
 	-- Controller settings, one per frame, filled in as they arrive. seen is
 	-- what separates a setting reported as zero from one not yet reported.
 	conf_count = 0,

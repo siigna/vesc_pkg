@@ -187,4 +187,152 @@ function M.page_trip(switched)
 	M.trip_last = curr
 end
 
+-- --- Session page: maxima and totals since the last reset ---
+
+-- Which touch region resets the session, and how far through a hold it is.
+-- Injected by the input layer; the defaults make a bench render work.
+M.btn_actions_long = {}
+M.btn_hold_region = nil
+M.btn_hold_progress = 0.0
+M.session_fade = 0.0
+
+function M.secs_since(t)
+	return vesc.secs_since(t)
+end
+
+-- btn_actions_long holds an action id per region; 12 is "reset the session
+-- maxima". Whichever region is bound to it is the one whose hold fades this
+-- page.
+function M.session_reset_region()
+	for i, a in ipairs(M.btn_actions_long) do
+		if a == 12 then
+			return i
+		end
+	end
+	return nil
+end
+
+function M.session_state()
+	local stats = require("lib.statistics")
+	return {
+		M.round_x(M.secs_since(state.session_start), 1),  -- 1 Time
+		M.round_x(units.speed(state.kmh_max), 1),         -- 2 Speed max
+		M.round_x(state.kw_max * 1000.0, 1),              -- 3 Power max
+		M.round_x(state.amps_now_max, 0.1),               -- 4 Current max
+		M.round_x(units.temp(state.temp_motor_max), 1),   -- 5 Motor temp max
+		M.round_x(units.temp(state.temp_esc_max), 1),     -- 6 ESC temp max
+		M.round_x(units.temp(state.temp_battery_max), 1), -- 7 Pack temp max
+		M.round_x(state.duty, 0.01),                      -- 8 Duty
+	}
+end
+
+M.session_last = {}
+
+function M.page_session(switched)
+	local stats = require("lib.statistics")
+	local curr = M.session_state()
+	local update = changed(M.session_last, curr)
+
+	-- While the reset region is held, every value fades towards the
+	-- background in step with the hold, and comes back if you let go.
+	local rst = M.session_reset_region()
+	local fade = 0.0
+	if rst and M.btn_hold_region and M.btn_hold_region == rst then
+		fade = M.btn_hold_progress
+	end
+	if fade ~= M.session_fade then
+		M.session_fade = fade
+		update = all_true(#curr)
+	end
+
+	if switched then
+		update = all_true(#curr)
+		M.resources = {
+			val_img = vesc.img_buffer("indexed4", M.col_val_w, M.row_h),
+		}
+		M.page_clear()
+		M.grid_labels({"Time", "Speed Max", "Power Max", "I Max",
+			"T Mot Max", "T ESC Max", "T Pack Max", "Duty"})
+	end
+
+	M.grid_values(update, {
+		stats.slot_time_str(curr[1]),
+		string.format("%.0f", curr[2]),
+		string.format("%.0f", curr[3]),
+		string.format("%.0f", curr[4]),
+		string.format("%.0f", curr[5]),
+		string.format("%.0f", curr[6]),
+		string.format("%.0f", curr[7]),
+		string.format("%.0f", 100.0 * curr[8]),
+	}, colors.fade_aa(M.session_fade))
+
+	M.session_last = curr
+end
+
+-- --- Battery page ---
+--
+-- Everything here comes from the BMS over CAN rather than from the
+-- controller.
+
+function M.batt_state()
+	return {
+		M.round_x(vesc.bms_val("v_tot"), 0.1),
+		M.round_x(vesc.bms_val("v_cell_min"), 0.01),
+		M.round_x(vesc.bms_val("v_cell_max"), 0.01),
+		vesc.bms_val("cell_num"),
+		M.round_x(vesc.bms_val("i_in_ic"), 0.1),
+		M.round_x(vesc.bms_val("ah_cnt"), 0.01),
+		M.round_x(vesc.bms_val("temp_cell_max"), 1),
+		M.round_x(vesc.bms_val("hum"), 1),
+	}
+end
+
+M.batt_last = {}
+
+function M.page_batt(switched)
+	-- The BMS values all read zero with nothing connected, which is
+	-- indistinguishable from a real reading, so say so outright.
+	local curr
+	if state.battery_a_connected then
+		curr = M.batt_state()
+	else
+		curr = {0, 0, 0, 0, 0, 0, 0, 0}
+	end
+
+	local update = changed(M.batt_last, curr)
+
+	if switched then
+		update = all_true(#curr)
+		M.resources = {
+			val_img = vesc.img_buffer("indexed4", M.col_val_w, M.row_h),
+		}
+		M.page_clear()
+
+		if not state.battery_a_connected then
+			local buf = vesc.img_buffer("indexed4", M.L.page_w, 30)
+			buf:clear()
+			du.ttf_txt_center("No BMS on the bus", M.font_24, buf)
+			vesc.disp_render(buf, M.L.page_x, M.L.page_y + 58, colors.dim_icon)
+		else
+			M.grid_labels({"Pack V", "Cell Min", "Cell Max", "Cells",
+				"Current", "Ah Count", "T Cell Max", "Humidity"})
+		end
+	end
+
+	if state.battery_a_connected then
+		M.grid_values(update, {
+			string.format("%.1f", curr[1]),
+			string.format("%.2f", curr[2]),
+			string.format("%.2f", curr[3]),
+			string.format("%d", curr[4]),
+			string.format("%.1f", curr[5]),
+			string.format("%.2f", curr[6]),
+			string.format("%.0f", curr[7]),
+			string.format("%.0f", curr[8]),
+		})
+	end
+
+	M.batt_last = curr
+end
+
 return M

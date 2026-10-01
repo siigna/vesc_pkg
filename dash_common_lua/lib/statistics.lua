@@ -40,6 +40,17 @@ function M.smooth_step(sv, v, k, lo, hi)
 	return n
 end
 
+-- Elapsed time as m:ss under an hour and h:mm over it, which is what fits a
+-- grid cell. The lisp relies on integer division truncating; Lua's // floors,
+-- and these are never negative, so the two agree.
+function M.slot_time_str(secs)
+	local s = math.floor(secs)
+	if s < 3600 then
+		return string.format("%d:%02d", s // 60, s % 60)
+	end
+	return string.format("%d:%02d", s // 3600, (s // 60) % 60)
+end
+
 --- the rolling chart ---
 --
 -- A ring of samples, newest first when read. The lisp keeps it in a byte

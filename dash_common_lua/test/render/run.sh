@@ -87,4 +87,16 @@ run_case trip '(view-static-step)
 (page-trip false)
 (view-static-step)' trip_p4.lua || fail=1
 
+run_case session '(view-static-step)
+(setq page-now 2)
+(page-session true)
+(page-session false)
+(view-static-step)' session_p4.lua || fail=1
+
+run_case batt '(view-static-step)
+(setq page-now 3)
+(page-batt true)
+(page-batt false)
+(view-static-step)' batt_p4.lua || fail=1
+
 exit $fail
