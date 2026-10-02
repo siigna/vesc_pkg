@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 REPL=${REPL:-../../../vesc_express/main/lispBM/repl/repl}
 FPS=${FPS:-10}
 TITLE_SECS=${TITLE_SECS:-2}
-TITLE=${TITLE:-VESC Pedal Assist}
+TITLE=${TITLE:-ESCargot Pedal Assist}
 SUBTITLE=${SUBTITLE:-torque sensing PAS, shown on the touch dash}
 VIDEO=1
 [ "${1:-}" = "--frames" ] && VIDEO=0

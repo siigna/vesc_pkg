@@ -443,7 +443,7 @@
 
         (var imgbuf (img-buffer dm-pool 'indexed4 disp-w 60))
         (img-clear imgbuf)
-        (ttf-txt-center "VESC" font-40 imgbuf)
+        (ttf-txt-center "ESCargot" font-40 imgbuf)
         (disp-render imgbuf 0 190 colors-vesc)
 
         (var verimg (img-buffer dm-pool 'indexed4 disp-w 30))
