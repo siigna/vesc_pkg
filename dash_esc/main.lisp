@@ -591,7 +591,7 @@
         ("Temp Fet" "degC" 1            (get-temp-fet))
         ("Temp Motor" "degC" 1          (get-temp-mot))
         ("Batt" "%"                     (* (get-batt) 100))
-        ("kmh_vesc" "km/h" "Speed VESC" (* (get-speed) 3.6))
+        ("kmh_vesc" "km/h" "Speed ESC"  (* (get-speed) 3.6))
         ("roll"                         (ix (get-imu-rpy) 0))
         ("pitch"                        (ix (get-imu-rpy) 1))
         ("yaw"                          (ix (get-imu-rpy) 2))
