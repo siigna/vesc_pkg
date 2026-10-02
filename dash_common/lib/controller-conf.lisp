@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Controller settings the dash may change.
 ;
 ; Separate from the display settings in persistent-settings.lisp: these live on

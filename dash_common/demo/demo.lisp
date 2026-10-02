@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Renders a scripted ride to a numbered frame sequence, for demo stills and
 ; video. demo.sh substitutes BOARD and the four font file names, the same way
 ; the test harness does.

@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for live-cell-hit, the coordinate-to-cell map behind the long
 ; press that sends a live cell to the chart page. Pure arithmetic, so no
 ; display and no board package needed.

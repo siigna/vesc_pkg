@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/pages.lua: the page set, the mask, the rotation and the
 -- two overlays.
 --

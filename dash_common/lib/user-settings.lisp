@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 (def settings-units-speeds '(kmh . "km/h"))
 (def settings-units-temps '(celsius . "C"))
 

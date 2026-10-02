@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Settings, and the eeprom they live in.
 --
 -- Ported from dash_common/lib/persistent-settings.lisp, minus the PIN lock

@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Regenerates the pre-rendered fonts. Run ./generate_fonts, which needs the
 ; LispBM repl (main/lispBM/repl in the vesc_express tree, built with
 ; FEATURES="64") on PATH as lbm.

@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Cell grids, and the coordinate-to-cell maps that invert them.
 --
 -- Ported from the geometry in dash_common/views/view_pages.lbm. The lisp

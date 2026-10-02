@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 """A linter for the dash's LispBM sources.
 
 LispBM has no static checking of its own: a file loads, and an undefined symbol

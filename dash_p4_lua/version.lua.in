@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Shown on the splash. Generated from `version` by the Makefile, so the
 -- number lives in one place.
 return "{{VERSION}}"

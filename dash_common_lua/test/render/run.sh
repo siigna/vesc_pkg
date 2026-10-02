@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Render a ported view and compare it against the lisp dash, pixel for pixel.
 #
 #   ./run.sh                 render and compare

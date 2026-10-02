@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Renders the Clay screen description for one board profile, and checks two
 ; things that only show up as pixels:
 ;

@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Which pages exist, which are switched on, and which one is drawn.
 --
 -- Ported from the page set and view-pages-thread at the end of

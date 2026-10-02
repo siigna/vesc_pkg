@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Touch input.
 ;
 ; The other dashes in this family have two to four physical buttons and map

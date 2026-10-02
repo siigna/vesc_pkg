@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for the statistics sampler: lib/statistics.lua tick().
 --
 -- A port of the stats-thread body in dash_common/lib/statistics.lisp, which

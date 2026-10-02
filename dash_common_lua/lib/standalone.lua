@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Reading the controller directly, without dash_esc.
 --
 -- Ported from dash_common/lib/standalone.lisp.

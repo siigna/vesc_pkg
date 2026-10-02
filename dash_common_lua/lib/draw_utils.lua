@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Clamping and range mapping, and the one text helper every view uses.
 --
 -- Ported from dash_common/lib/draw-utils.lisp. The clamps are here rather

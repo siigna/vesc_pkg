@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for the signal request bitfield. A port of
 -- dash_common/test/signal_test.lisp, asserting the same values.
 --

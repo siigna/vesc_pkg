@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for the walk assist request in main_body.lisp. Pure logic, so no
 ; display needed.
 ;

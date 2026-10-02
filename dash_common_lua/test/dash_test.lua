@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/dash.lua: the tick, the dividers, the transmit frames
 -- and the worker pass.
 --

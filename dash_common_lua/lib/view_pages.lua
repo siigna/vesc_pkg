@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The swappable page area.
 --
 -- Ported from dash_common/views/view_pages.lbm, a page at a time. The grid

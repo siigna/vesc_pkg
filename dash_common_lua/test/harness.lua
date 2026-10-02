@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Shared assertions for the dash unit tests.
 --
 -- near() rather than equality for everything numeric: these are fractions

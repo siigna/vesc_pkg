@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Unit tests for the Lua dash libs, against a host Lua.
 #
 # These are ports of the cases in dash_common/test, asserting the same

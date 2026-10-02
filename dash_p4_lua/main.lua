@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The dash, on the Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, under the Lua
 -- engine.
 --

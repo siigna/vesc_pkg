@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Renders the ported view_static for the P4 profile, pinned to exactly the
 -- state the lisp reference pins, so the two can be compared pixel for pixel.
 -- See run.sh.

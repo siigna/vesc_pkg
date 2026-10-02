@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for smooth-step, the exponential approach behind the optional
 ; value smoothing on the live page. Pure arithmetic, so no display needed.
 ;

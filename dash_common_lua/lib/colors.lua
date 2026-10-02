@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The palettes, rebuilt from the theme and the colour settings.
 --
 -- Ported from dash_common/lib/colors.lisp.

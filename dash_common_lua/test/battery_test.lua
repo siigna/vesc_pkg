@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/battery.lua. Pure arithmetic, so no display needed.
 --
 -- A port of dash_common/test/battery_test.lisp, asserting the same numbers:

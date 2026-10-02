@@ -1,3 +1,5 @@
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The Lua dash, as an installable VESC package.
 #
 # Two steps rather than one, because the Lua side has its own packer. The

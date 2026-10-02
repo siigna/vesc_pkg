@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Rebuilt at runtime from the theme and the colour settings
 (def color-bg 0x000000)
 (def color-accent 0x00C8FF)

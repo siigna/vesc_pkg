@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for boot-log-touch-line in lib/boot-log.lisp.
 ;
 ; The point is not the formatting for its own sake: the Lua dash reports the

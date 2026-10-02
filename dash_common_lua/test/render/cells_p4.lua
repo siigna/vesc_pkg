@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Cells page against its lisp reference. See run.sh.
 local state = require("lib.state")
 local colors = require("lib.colors")

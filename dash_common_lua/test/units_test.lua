@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/units.lua. New: the lisp has none, and a conversion
 -- applied twice or not at all is the kind of thing that looks plausible on a
 -- dash -- 40 mph and 40 km/h are both believable speeds.

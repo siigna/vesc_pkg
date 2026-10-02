@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Always-on part of the screen: status strip, speed, battery bar, nav strip.
 --
 -- Ported from dash_common/views/view_static.lbm.

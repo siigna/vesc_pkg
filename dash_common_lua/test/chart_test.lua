@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for the rolling chart ring in lib/statistics.lua.
 --
 -- New: the lisp has no unit test for it. The ring is read newest-first with

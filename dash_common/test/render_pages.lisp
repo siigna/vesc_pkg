@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Renders every page of the hand-written views for one board profile.
 ; run.sh substitutes BOARD and the four font file names.
 (import "stubs.lisp" 'code-stubs)

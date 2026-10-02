@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- What a press does.
 --
 -- Ported from the action dispatch in dash_common/main_body.lisp:

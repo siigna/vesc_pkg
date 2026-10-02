@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The config packet the package UI reads, built by the Lua dash.
 --
 -- Printed so test/cfg/run.sh can diff it against what the lisp dash's

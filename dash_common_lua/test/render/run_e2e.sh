@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The whole dash, every page, against the goldens dash_common/test ships.
 #
 #   ./run_e2e.sh             render and compare

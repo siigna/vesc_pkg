@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Live values and the smoothing that makes them readable.
 --
 -- Ported from dash_common/lib/statistics.lisp. The state itself lives in

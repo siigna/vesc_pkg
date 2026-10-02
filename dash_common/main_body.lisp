@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Shared body of the touch dash packages. Everything here is independent of
 ; the panel and the board.
 ;

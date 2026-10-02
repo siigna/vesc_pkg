@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/actions.lua: the stored action ids, the per-page claims
 -- on a press, and the two held actions.
 --

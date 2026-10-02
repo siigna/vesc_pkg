@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Runtime copies for the views. Before @const-start because they are mutated.
 (def settings-units-metric config-metric-speeds)
 (def settings-temps-metric config-metric-temps)

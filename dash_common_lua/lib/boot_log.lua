@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The board's own log, on the glass.
 --
 -- New: the lisp dash has no equivalent, because until now there was nothing

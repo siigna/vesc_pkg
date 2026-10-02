@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 (def log-active false)
 (def rx-cnt-can 0)
 (def crusie-new-msg-rx false)

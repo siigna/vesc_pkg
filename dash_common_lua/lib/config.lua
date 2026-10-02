@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Board constants. A board package overwrites these fields before loading
 -- anything that reads them; the values here are the placeholders the lisp
 -- dash also ships, and they are deliberately conservative rather than

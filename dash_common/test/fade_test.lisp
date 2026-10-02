@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; The fade only shows while a region is held, which a golden render cannot
 ; reach. Drive it directly at several hold fractions.
 (import "stubs.lisp" 'code-stubs)

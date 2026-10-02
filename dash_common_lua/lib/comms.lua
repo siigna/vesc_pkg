@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Decoding the frames dash_esc and a bike-controls node put on the bus.
 --
 -- Ported from the receive half of dash_common/lib/communication.lisp. The

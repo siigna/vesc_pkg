@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; The label/value page grid, as a Clay description instead of arithmetic.
 ;
 ; The hand-written version in view_pages.lbm computes col-w, col-lbl-w,

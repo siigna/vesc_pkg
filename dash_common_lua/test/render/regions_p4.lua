@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The touch region overlay, rendered on the host.
 --
 -- No golden: there is no lisp counterpart. The check is that the overlay

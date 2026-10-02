@@ -1,3 +1,5 @@
+// Copyright 2026 Stephen Bouche
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Generated from dash_p4/ui.qml.in. The UI is the same; only the three
 // things it says to the dash differ.
 //

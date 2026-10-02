@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/colors.lua. The lisp dash has no unit test for its
 -- colours -- they are only checked by the rendered goldens -- so these are
 -- new, and aimed at the properties a wrong palette breaks quietly:

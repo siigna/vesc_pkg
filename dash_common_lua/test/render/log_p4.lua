@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The boot log page, rendered on the host.
 --
 -- No golden: there is no lisp counterpart to compare against, because the

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Render a scripted ride on each dash and stitch it into a video.
 #
 #   ./demo.sh            render frames, then mp4 and gif for each board

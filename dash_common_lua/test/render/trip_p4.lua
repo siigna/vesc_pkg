@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Renders the ported trip page for the P4 profile against its lisp
 -- reference. Same pinning as static_p4.lua, plus the values only this page
 -- reads. See run.sh.

@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/settings.load and lib/apply.lua: reading every stored
 -- setting through its guard, and putting the results where the views read
 -- them.

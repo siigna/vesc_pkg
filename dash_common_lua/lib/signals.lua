@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- What this display is asking for on the bike's own outputs, as a bitfield in
 -- byte 3 of SID 201.
 --

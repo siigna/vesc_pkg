@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for the PIN lock state machine in lib/vehicle-state.lisp.
 ;
 ; It is a deterrent rather than security -- the code is plain in eeprom -- so

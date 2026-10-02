@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The runtime: what runs, how often, and in what order.
 --
 -- Ported from main() and the thread set in dash_common/main_body.lisp, plus

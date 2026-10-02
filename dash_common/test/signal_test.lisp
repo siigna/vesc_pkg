@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for the signal request bitfield in lib/vehicle-state.lisp, which
 ; is what byte 3 of SID 201 carries for a bike-controls node to act on.
 ;

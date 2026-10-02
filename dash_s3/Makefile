@@ -1,3 +1,5 @@
+# Copyright 2026 Stephen Bouche
+# SPDX-License-Identifier: GPL-3.0-or-later
 VESC_TOOL ?= vesc_tool
 
 all: dash_s3.vescpkg

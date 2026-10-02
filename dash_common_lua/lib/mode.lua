@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- The drive mode, and who gets to decide it.
 --
 -- Ported from the mode handling in dash_common/lib/vehicle-state.lisp and the

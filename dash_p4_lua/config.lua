@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Board constants for the Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
 --
 -- The Lua counterpart of dash_p4/config.lisp. Values taken from there rather

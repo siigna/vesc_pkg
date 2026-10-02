@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Where the loaded settings go.
 --
 -- Ported from settings-build, settings-apply-pages, settings-apply-visual,

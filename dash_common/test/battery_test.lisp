@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for lib/battery.lisp. Pure arithmetic, so no display needed.
 (import "stubs.lisp" 'code-stubs)
 (read-eval-program code-stubs)

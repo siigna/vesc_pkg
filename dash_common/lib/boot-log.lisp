@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; The board's own log, for the pages to draw.
 ;
 ; The counterpart of dash_common_lua/lib/boot_log.lua, which came first: this

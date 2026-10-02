@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 @const-start
 
 ; Waveshare ESP32-S3-Touch-LCD-4, 480x480. Board profile and bring-up; the

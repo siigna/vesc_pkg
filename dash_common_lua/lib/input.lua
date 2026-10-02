@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Touch input: four virtual buttons, long press with hold progress, repeat,
 -- and vertical swipes.
 --

@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Units. Everything arrives as km/h, km and C; conversion happens only here.
 --
 -- Ported from dash_common/lib/user-settings.lisp. The lisp keeps the unit and

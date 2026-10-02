@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for smooth_step. A port of dash_common/test/smooth_test.lisp,
 -- asserting the same numbers.
 local t = require("test.harness")

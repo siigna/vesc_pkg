@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Battery page against its lisp reference. See run.sh.
 -- Renders the ported trip page for the P4 profile against its lisp
 -- reference. Same pinning as static_p4.lua, plus the values only this page

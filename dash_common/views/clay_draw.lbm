@@ -1,3 +1,5 @@
+; Copyright 2026 Stephen Bouche
+; SPDX-License-Identifier: GPL-3.0-or-later
 ; Draws a clay-layout command list with the ordinary display primitives.
 ;
 ; One indexed16 buffer holds four 4-step colour ramps, so each palette index

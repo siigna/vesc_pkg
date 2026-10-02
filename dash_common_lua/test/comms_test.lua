@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/comms.lua, the frame decoder.
 --
 -- New: the lisp dash has no unit test for this. It is the module where a

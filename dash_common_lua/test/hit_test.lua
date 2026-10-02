@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for the coordinate-to-cell maps: the long press that sends a
 -- live cell to the chart page, and the six-button quick shade.
 --

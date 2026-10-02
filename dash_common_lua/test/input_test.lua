@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- Unit tests for lib/input.lua. New: the lisp dash has no test for input.lisp
 -- at all, because its loop body only exists inside a thread that polls real
 -- hardware.

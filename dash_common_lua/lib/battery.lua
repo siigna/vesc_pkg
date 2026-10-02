@@ -1,3 +1,5 @@
+-- Copyright 2026 Stephen Bouche
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- State of charge from the pack itself, rather than taking the controller's
 -- word for it.
 --
