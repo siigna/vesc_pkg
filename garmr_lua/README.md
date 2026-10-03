@@ -2,13 +2,14 @@
 
 **Prototype.** It works and it is rideable, but the level is a current rather
 than a wattage, there is no ramp, and the settings are constants at the top of
-`garmr.lisp`. See *What this is not* below.
+`garmr.lua`. See *What this is not* below.
 
-This is the LispBM version, and on most bikes it is the one to use. An
-STM32F405 carries one script engine, not both: LispBM alone leaves `.ram4` at
-99.6% of 62 KB, so running the Lua sibling in `garmr_lua` means a firmware
-build with no LispBM at all -- and therefore no Refloat, no Float, no TNT, no
-dashboards. The two scripts are the same logic.
+**This is the Lua version, and most bikes should use the LispBM one in
+`garmr` instead.** An STM32F405 carries one script engine, not both: LispBM
+alone leaves `.ram4` at 99.6% of 62 KB, so running this one means a firmware
+build with no LispBM -- and therefore no Refloat, no Float, no TNT, no
+dashboards. The two scripts are the same logic. Use this one if you are
+already running a Lua build.
 
 Idea from a Discord suggestion, with thanks:
 <https://discordapp.com/users/1440099786974826528>
@@ -59,8 +60,8 @@ script.
 | Walk require pedal | off — no interlock is the point |
 | **Brake source** | **ADC, with a channel and threshold.** Mandatory: without it there is no brake cancel at all |
 
-Then edit the `cfg-*` definitions at the top of `garmr.lisp` for your
-switch's pin and voltages, and `make`.
+Then edit the `cfg` block at the top of `garmr.lua` for your switch's pin and
+voltages, and `make`.
 
 If the switch does nothing, the script says why on the console: it reports
 when it has asked for the hold and the firmware has not started driving,

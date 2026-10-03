@@ -6,17 +6,16 @@ Item {
     property string pkgName: "Garmr (prototype)"
     property string pkgDescriptionMd: "README.md"
 
-    // Built by vesc_express/tools/luapack.py, not the .lua source: vesc_tool
-    // checks the container header and refuses a raw script, because
-    // installing one would erase the board's script slot and leave it holding
-    // bytes no engine can run.
-    property string pkgLua: "garmr.luapkg"
+    // Lisp needs no container: vesc_tool walks the imports itself. The Lua
+    // sibling in garmr_lua has to ship a .luapkg instead, which is the one
+    // real difference between the two packages.
+    property string pkgLisp: "garmr.lisp"
 
     property string pkgOutput: "garmr.vescpkg"
 
-    // Needs the pedal-assist walk keepalive and the Lua PAS bindings, so this
-    // is an ESCargot build only. On firmware without them the script would
-    // load and then fail on the first call.
+    // Needs the pedal-assist walk keepalive and app-pas-get-flags, so this is
+    // an ESCargot build only. On firmware without them the script would load
+    // and then fail on the first call.
     function isCompatible (fwRxParams) {
         var fwName = fwRxParams.fwName
         return fwRxParams.hwTypeStr() === "VESC" &&
