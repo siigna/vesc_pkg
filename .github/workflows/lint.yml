@@ -18,8 +18,45 @@ jobs:
       # Pure Python, no dependencies, so this needs nothing built. The render
       # tests are not here: they need the LispBM repl from the vesc_express
       # tree, which is a different repository.
-      - name: Lint the dash sources
-        run: dash_common/test/lint.py dash_common dash_s3 dash_p4
+      # Every package that declares pkgLisp, not just the three dash ones. The
+      # linter was always capable of it; it had simply never been pointed at
+      # the rest, and doing so found two bugs in the linter itself -- a
+      # paren-balance check that never stripped comments (so a commented-out
+      # fragment with an unclosed paren failed a balanced file) and a crash on
+      # a package that uses eeprom-addrs without defining it.
+      #
+      # --unbound is deliberately not run here, by anything. It reports 183
+      # findings on dash_common alone, and the sample is all false: `define`,
+      # `fopen` and `load-file` are builtins its list does not know, and it
+      # reads font generators that run in the repl rather than on a board.
+      # Worth fixing one day; gating on it today would mean a permanently red
+      # build, which is the same as no build.
+      - name: Lint every lisp package
+        run: |
+          bad=0
+          for desc in */pkgdesc.qml; do
+              pkg=${desc%/pkgdesc.qml}
+              grep -q 'pkgLisp' "$desc" || continue
+
+              # A QML-only package declares pkgLisp as the empty string, and
+              # vesclog does exactly that. It has no sources to lint, which is
+              # not a finding.
+              if ! find "$pkg" -name '*.lisp' -o -name '*.lbm' | grep -q .; then
+                  printf '  --   %s (no lisp sources)\n' "$pkg"
+                  continue
+              fi
+
+              if out=$(dash_common/test/lint.py "$pkg" 2>&1); then
+                  printf '  ok   %s\n' "$pkg"
+              else
+                  printf '  FAIL %s\n' "$pkg"
+                  printf '%s\n' "$out" | sed 's/^/    /'
+                  bad=$((bad + 1))
+              fi
+          done
+          printf '\n%d package(s) with findings\n' "$bad"
+          [ "$bad" -eq 0 ]
+
 
       # Every package's descriptor against what vesc_tool requires of it. Pure
       # Python, so it needs nothing built -- see the script's own header for

@@ -111,11 +111,22 @@ def check_return_needs_defunret(path, text, findings):
 
 
 def check_paren_balance(path, text, findings):
-    """Unbalanced parens, reported per top-level form rather than per file."""
+    """Unbalanced parens.
+
+    Over the comment-stripped text, which it did not used to be: a commented
+    out fragment such as
+
+        ;(img-rectangle img x y width height color opt-attr1
+
+    carries an unclosed paren that no reader ever sees, and counting it
+    reported a perfectly balanced file as unbalanced by +1. The three dash
+    packages this linter ran on happened to contain no such line, so the bug
+    sat here until the linter was pointed at the other twenty-three.
+    """
     depth = 0
     in_str = False
     esc = False
-    for ch in text:
+    for ch in strip_comments(text):
         if esc:
             esc = False
             continue
@@ -203,10 +214,16 @@ def check_settings_restored(path, text, findings):
 
     Checked statically because the goldens structurally cannot see it.
     """
-    if "eeprom-addrs" not in text:
-        return
-
     clean = strip_comments(text)
+
+    # The table has to be defined here for any of this to mean anything. A
+    # package that only *uses* eeprom-addrs -- UnleashedCreativityLights
+    # iterates it with loopforeach and defines it elsewhere -- satisfied a
+    # bare "eeprom-addrs" in text and then crashed on the index() below with
+    # ValueError: substring not found. Guard on the string actually searched
+    # for, not on a prefix of it.
+    if "(def eeprom-addrs" not in clean:
+        return
 
     declared = set(re.findall(
         r"\(([\w\-]+)\s*\.\s*\(\s*\d+\s+[ifb]\s*\)\)",
