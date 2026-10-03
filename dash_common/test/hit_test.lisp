@@ -1,4 +1,8 @@
+; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from dash35b/lib/statistics.lisp;
+; git blame -C records 3 lines as Benjamin Vedder's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 ; Unit tests for live-cell-hit, the coordinate-to-cell map behind the long
 ; press that sends a live cell to the chart page. Pure arithmetic, so no

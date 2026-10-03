@@ -1,3 +1,5 @@
+; Copyright chargedup3d
+; Copyright jeremy
 ; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
 ;

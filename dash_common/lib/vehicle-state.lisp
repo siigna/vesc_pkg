@@ -1,3 +1,4 @@
+; Copyright r3n33
 ; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
 ;

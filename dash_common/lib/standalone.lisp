@@ -1,4 +1,8 @@
+; Copyright jeremy
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from dash35b/lib/standalone.lisp;
+; git blame -C records 40 lines as jeremy's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 ; Without dash_esc. Status frames carry speed, duty, voltage, current and
 ; temps, but not Wh, Ah, odometer or faults.

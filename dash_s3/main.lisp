@@ -1,4 +1,8 @@
+; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from main.lisp;
+; git blame -C records 4 lines as Benjamin Vedder's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 @const-start
 
