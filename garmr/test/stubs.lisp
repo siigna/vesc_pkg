@@ -15,7 +15,14 @@
 (def walk-calls 0)
 (def last-walk 'never)
 
-(defun get-adc (ch) (if (= ch 1) fake-adc (raise 'eerror)))
+; (car 1) raises type_error, which is what this needs: the real get-adc
+; returns ENC_SYM_EERROR for a channel the hardware does not have, and an
+; extension returning that raises in the caller. The first version called
+; (raise 'eerror) -- and raise does not exist in LispBM or in vesc_express, so
+; it raised variable_not_bound instead. The trap caught it either way and the
+; checks passed, which is the problem: it was testing that calling a
+; nonexistent function raises, not that get-adc does.
+(defun get-adc (ch) (if (= ch 1) fake-adc (car 1)))
 (defun get-fault () fake-fault)
 (defun app-pas-get-flags () fake-flags)
 (defun app-pas-walk-set (v) {

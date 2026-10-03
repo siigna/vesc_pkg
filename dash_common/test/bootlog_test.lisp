@@ -48,7 +48,13 @@
 
 ; No binding at all, which is a firmware without the counters rather than a
 ; panel without a finger. Said rather than guessed at.
-(defun touch-stats () (raise 'no-such-extension))
+; (car 1) raises type_error. This used to call (raise 'no-such-extension),
+; and raise is not a function in LispBM or in vesc_express -- so it raised
+; variable_not_bound, the checks passed for the wrong reason, and the repl
+; printed error context that run.sh's `grep -qE "Error"` turned into a failing
+; suite. These renders have been reporting a non-zero exit for that reason
+; alone, which nothing noticed because they are not in CI.
+(defun touch-stats () (car 1))
 (is-str 'no-binding (boot-log-touch-line) "touch: no stats binding")
 
 (print (list 'bootlog checks 'checks fails 'fails))

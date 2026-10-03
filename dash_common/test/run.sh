@@ -11,6 +11,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 REPL=${REPL:-../../../vesc_express/main/lispBM/repl/repl}
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 UPDATE=0
 [ "${1:-}" = "--update" ] && UPDATE=1
 
@@ -128,10 +130,22 @@ fi
 fail=0
 
 # Unit tests first: pure arithmetic, no board or display involved.
+# A trapped error is an expected outcome, not a failure. Several of these
+# units exercise a failure path on purpose -- bootlog_test raises inside
+# touch-stats to stand in for a firmware without the counters -- and the repl
+# prints "Error (trapped): ..." when that happens. Matching a bare "Error"
+# therefore failed the suite precisely when a test did its job, which is why
+# these renders have been exiting non-zero while every check passed and every
+# golden matched. Nothing caught it because they are not in CI.
+#
+# Through a file rather than a pipeline: `grep -v ... | grep -q` lets the
+# right-hand side exit first, and the left then dies of SIGPIPE, which under
+# pipefail would be a failure of its own.
 for unit in battery_test walk_test hit_test smooth_test signal_test pin_test bootlog_test; do
     out=$("$REPL" -H 400000 -M 8000000 --terminate --silent -s "$unit.lisp" 2>&1)
-    echo "$out" | grep -E "^\(|Error" | sed "s/^/  /"
-    if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then fail=1; fi
+    printf '%s\n' "$out" | grep -E "^\(|Error" | sed "s/^/  /"
+    printf '%s\n' "$out" | grep -v 'Error (trapped)' > "$tmp/unit_out"
+    if grep -qE "Error|FAIL|[1-9][0-9]* fails" "$tmp/unit_out"; then fail=1; fi
 done
 
 for spec in "${BOARDS[@]}"; do
