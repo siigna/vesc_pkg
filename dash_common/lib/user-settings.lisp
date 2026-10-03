@@ -1,4 +1,8 @@
+; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from lib/user-settings.lisp;
+; git blame -C records 14 lines as Benjamin Vedder's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 (def settings-units-speeds '(kmh . "km/h"))
 (def settings-units-temps '(celsius . "C"))

@@ -1,4 +1,8 @@
+; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from dash35b/lib/communication.lisp;
+; git blame -C records 69 lines as Benjamin Vedder's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 (def log-active false)
 (def rx-cnt-can 0)

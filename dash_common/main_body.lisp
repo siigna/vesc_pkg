@@ -1,4 +1,8 @@
+; Copyright Benjamin Vedder
 ; Copyright 2026 Stephen Bouche
+;
+; Parts of this file were moved here from dash35b/main.lisp;
+; git blame -C records 36 lines as Benjamin Vedder's.
 ; SPDX-License-Identifier: GPL-3.0-or-later
 ; Shared body of the touch dash packages. Everything here is independent of
 ; the panel and the board.
