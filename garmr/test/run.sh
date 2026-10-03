@@ -18,7 +18,8 @@ if [ ! -x "$REPL" ]; then
     exit 2
 fi
 
-out=$("$REPL" -H 400000 -M 8000000 --silent --terminate -s engage_test.lisp 2>&1)
+out=$("$REPL" -H 400000 -M 8000000 --silent --terminate \
+    -s stubs.lisp -s ../garmr.lisp -s engage_test.lisp 2>&1)
 echo "$out" | grep -E "^  (ok|FAIL)|checks, |Error" | sed 's/^/  /'
 
 if echo "$out" | grep -qE "Error|FAIL|[1-9][0-9]* fails"; then

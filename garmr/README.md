@@ -96,11 +96,37 @@ throttle rather than pedal assist, and changes how the bike is classified.
 
 ## Tests
 
-`bldc/tests/qemu`, image `test_garmr`: the engage logic against the real
-kernel with no board — the Schmitt trigger, the validity window, the debounce,
-the vetoes, and that every pass makes a keepalive call. The script it runs is
-cut from this file, not a copy.
+31 checks on the engage logic: the Schmitt trigger including its hysteresis —
+a value between the two thresholds keeps the current state, which a single
+threshold would not — the validity window, the debounce on engage but not on
+release, the brake, brake-channel and fault vetoes, that every pass makes a
+keepalive call rather than latching, and what `diagnose` reports for each PAS
+flag. They run this file, not a copy of it.
+
+Two ways, the same checks:
 
 ```sh
-cd bldc/tests/qemu && ./run.sh test_garmr
+make test                                        # in the LispBM repl
+cd bldc/tests/qemu && ./run.sh test_garmr_lisp    # on a simulated STM32F405
 ```
+
+The repl needs the one from the `vesc_express` checkout, the same the dash
+render tests use. The QEMU image needs neither that nor a board, which is how
+these checks get into CI.
+
+That image gives LispBM the firmware's own sizes — 2428 cons cells and a 28K
+arena, the numbers from `lispif.c` rather than a comfortable set chosen for a
+test — so running there is also the check that this script fits on a board. It
+leaves 1326 cells free.
+
+No C stand-ins were needed for the pedal-assist side: `test/stubs.lisp` defines
+those six firmware calls as ordinary Lisp functions, and the image registers no
+real ones to collide with. The image does supply `print`, `systime`,
+`secs-since` and `sleep` in C, because those are host services rather than PAS
+behaviour — the debounce has to be measured against a real clock, and a Lisp
+fake would be measuring itself.
+
+Four mutations confirm the checks bite, in both runners: removing the validity
+window fails three, flattening the Schmitt trigger to a single threshold fails
+the hysteresis check exactly, turning the keepalive into a latch fails three,
+and removing the brake veto fails three.

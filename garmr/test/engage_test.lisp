@@ -25,10 +25,10 @@
         })
 })
 
-(import "stubs.lisp" 'code-stubs)
-(read-eval-program code-stubs)
-(import "../garmr.lisp" 'code-garmr)
-(read-eval-program code-garmr)
+; No imports: the stubs and the script are evaluated before this file, by
+; whatever is running it. The repl is given all three with -s, and the QEMU
+; image embeds all three and evaluates them in the same order -- there is no
+; filesystem there to import from.
 
 ; --- released when the switch is off ---------------------------------------
 (setq fake-adc 0.5)
