@@ -20,3 +20,40 @@ jobs:
       # tree, which is a different repository.
       - name: Lint the dash sources
         run: dash_common/test/lint.py dash_common dash_s3 dash_p4
+
+      # Every package's descriptor against what vesc_tool requires of it. Pure
+      # Python, so it needs nothing built -- see the script's own header for
+      # what it deliberately cannot check.
+      - name: Check the package descriptors
+        run: tools/check_packages.py
+
+  lua:
+    name: Lua syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A syntax error in a package's script is only found when somebody
+      # installs it on a board, because nothing here compiles Lua. luac -p
+      # parses without emitting anything, which is the cheapest guard there
+      # is. It is not a substitute for running the thing: Garmr's behaviour is
+      # tested in the firmware tree, under tests/qemu/test_garmr.
+      - name: Install lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: Parse every Lua source
+        run: |
+          bad=0
+          while IFS= read -r f; do
+              if luac5.4 -p "$f" 2>/tmp/luac.err; then
+                  printf '  ok   %s\n' "$f"
+              else
+                  printf '  FAIL %s\n' "$f"
+                  sed 's/^/    /' /tmp/luac.err
+                  bad=$((bad + 1))
+              fi
+          done < <(find . -name '*.lua' -not -path './.git/*' | sort)
+          printf '\n%d file(s) failed to parse\n' "$bad"
+          [ "$bad" -eq 0 ]
